@@ -11,27 +11,27 @@ export class Minimap {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.g = game;
-    this.image = this.renderTerrain(game.world.vegetation.treePoints, game.world.town.footprints);
+    this.image = this.renderTerrain(game.world.vegetation.treePoints, game.world.towns.flatMap((t) => t.footprints));
   }
 
-  renderTerrain(trees, buildings) {
+  renderTerrain(trees, buildings, size = TEX) {
     const c = document.createElement('canvas');
-    c.width = c.height = TEX;
+    c.width = c.height = size;
     const ctx = c.getContext('2d');
-    const img = ctx.createImageData(TEX, TEX);
+    const img = ctx.createImageData(size, size);
     const low = new THREE.Color(0x4f7d35), high = new THREE.Color(0x8c8a6a), water = new THREE.Color(0x35688c);
     const path = new THREE.Color(0x9a7d55);
     const col = new THREE.Color();
-    const scale = WORLD_SIZE / TEX;
-    for (let py = 0; py < TEX; py++) {
-      for (let px = 0; px < TEX; px++) {
+    const scale = WORLD_SIZE / size;
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
         const x = -WORLD_SIZE / 2 + (px + 0.5) * scale;
         const z = -WORLD_SIZE / 2 + (py + 0.5) * scale;
         const h = heightAt(x, z);
         if (isWater(x, z)) col.copy(water);
         else if (pathDistance(x, z) < 1.4) col.copy(path);
         else col.copy(low).lerp(high, smoothstep(2, 30, h)).multiplyScalar(0.85 + (h % 3) / 20);
-        const i = (py * TEX + px) * 4;
+        const i = (py * size + px) * 4;
         img.data[i] = col.r * 255;
         img.data[i + 1] = col.g * 255;
         img.data[i + 2] = col.b * 255;
@@ -42,7 +42,7 @@ export class Minimap {
     ctx.fillStyle = 'rgba(20, 45, 20, 0.55)';
     for (const t of trees) {
       ctx.beginPath();
-      ctx.arc((t.x + WORLD_SIZE / 2) / scale, (t.z + WORLD_SIZE / 2) / scale, 1.1 * t.s, 0, Math.PI * 2);
+      ctx.arc((t.x + WORLD_SIZE / 2) / scale, (t.z + WORLD_SIZE / 2) / scale, (2.2 * t.s) / scale, 0, Math.PI * 2);
       ctx.fill();
     }
     // Rooftops of Millbrook

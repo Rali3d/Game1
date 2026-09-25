@@ -1,18 +1,32 @@
 import * as THREE from 'three';
-import { heightAt, isWater } from '../world/Terrain.js';
 import { damp, dampAngle, rand } from '../engine/math.js';
 import { events } from '../engine/EventBus.js';
+import { createHumanoid, animateHumanoid, createWeapon, createCape } from './Humanoid.js';
 
 export const ENEMY_TYPES = {
   slime: {
     name: 'Meadow Slime', hp: 22, damage: 6, speed: 1.6, chaseSpeed: 3.2, aggro: 10, reach: 1.5,
-    windup: 0.45, cooldown: 1.4, xp: 14, radius: 0.6,
+    windup: 0.45, cooldown: 1.4, xp: 14, radius: 0.6, coins: [0, 3],
     loot: [['slime_gel', 0.6], ['herb', 0.15]],
   },
   wolf: {
     name: 'Grey Wolf', hp: 45, damage: 11, speed: 2.0, chaseSpeed: 6.0, aggro: 16, reach: 1.9,
-    windup: 0.35, cooldown: 1.1, xp: 32, radius: 0.7,
+    windup: 0.35, cooldown: 1.1, xp: 32, radius: 0.7, coins: [0, 2],
     loot: [['wolf_pelt', 0.6], ['potion', 0.08]],
+  },
+  bat: {
+    name: 'Cave Bat', hp: 14, damage: 5, speed: 2.5, chaseSpeed: 6.5, aggro: 11, reach: 1.4,
+    windup: 0.25, cooldown: 1.0, xp: 12, radius: 0.4, coins: [0, 2],
+    loot: [['bat_wing', 0.5]],
+  },
+  skeleton: {
+    name: 'Restless Bones', hp: 60, damage: 13, speed: 1.4, chaseSpeed: 3.4, aggro: 12, reach: 2.0,
+    windup: 0.55, cooldown: 1.3, xp: 45, radius: 0.5, coins: [3, 10],
+    loot: [['bone', 0.6], ['cave_crystal', 0.2], ['potion', 0.1]],
+  },
+  warden: {
+    name: 'Corvin, the Man in Grey', hp: 520, damage: 17, speed: 2.2, chaseSpeed: 4.2, aggro: 40, reach: 2.4,
+    windup: 0.5, cooldown: 1.2, xp: 400, radius: 0.55, coins: [0, 0], loot: [], boss: true,
   },
 };
 
@@ -26,19 +40,22 @@ function part(parent, geo, material, x, y, z) {
 }
 
 // States: wander -> chase (sees player) -> return (lost player / leashed) -> wander.
+// Enemies live in a "space" (world or cave) that provides groundAt, collide, isSafe and blocked.
 export class Enemy {
-  constructor(type, x, z, scene) {
+  constructor(type, x, z, scene, space) {
     this.type = type;
     this.def = ENEMY_TYPES[type];
     this.scene = scene;
+    this.space = space;
     this.hp = this.def.hp;
     this.alive = true;
     this.removed = false;
     this.home = new THREE.Vector3(x, 0, z);
     this.size = type === 'slime' ? rand(0.85, 1.25) : 1;
-    this.mesh = type === 'slime' ? this.buildSlime() : this.buildWolf();
+    const builders = { slime: 'buildSlime', wolf: 'buildWolf', bat: 'buildBat', skeleton: 'buildSkeleton', warden: 'buildWarden' };
+    this.mesh = this[builders[type]]();
     this.position = this.mesh.position;
-    this.position.set(x, heightAt(x, z), z);
+    this.position.set(x, space.groundAt(x, z), z);
     scene.add(this.mesh);
 
     this.facing = rand(0, Math.PI * 2);
@@ -54,7 +71,7 @@ export class Enemy {
     this.phase = rand(0, 10);
     this.speedNow = 0;
     this.lunge = 0;
-    this.buildHealthBar();
+    if (!this.def.boss) this.buildHealthBar();
   }
 
   buildSlime() {
@@ -111,6 +128,65 @@ export class Enemy {
     return g;
   }
 
+  buildBat() {
+    const g = new THREE.Group();
+    this.pivot = new THREE.Group();
+    g.add(this.pivot);
+    const skin = stdMat(0x2e2628);
+    part(this.pivot, new THREE.SphereGeometry(0.2, 10, 8), skin, 0, 0, 0).scale.set(1, 0.9, 1.2);
+    part(this.pivot, new THREE.ConeGeometry(0.05, 0.14, 4), skin, -0.1, 0.18, 0.05);
+    part(this.pivot, new THREE.ConeGeometry(0.05, 0.14, 4), skin, 0.1, 0.18, 0.05);
+    const eyes = new THREE.MeshBasicMaterial({ color: 0xff4a3a });
+    part(this.pivot, new THREE.SphereGeometry(0.03, 6, 4), eyes, -0.07, 0.05, 0.2);
+    part(this.pivot, new THREE.SphereGeometry(0.03, 6, 4), eyes, 0.07, 0.05, 0.2);
+    const wingMat = stdMat(0x3a2e30, { side: THREE.DoubleSide });
+    const wingGeo = new THREE.BufferGeometry();
+    wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.12, 0.75, 0.05, -0.05, 0, 0, -0.15, 0.55, -0.1, -0.2, 0, 0, -0.15, 0.75, 0.05, -0.05], 3));
+    wingGeo.computeVertexNormals();
+    this.wings = [1, -1].map((side) => {
+      const w = new THREE.Group();
+      const m = new THREE.Mesh(wingGeo, wingMat);
+      m.scale.x = side;
+      w.add(m);
+      this.pivot.add(w);
+      return w;
+    });
+    this.materials = [skin];
+    this.barHeight = 2.2;
+    return g;
+  }
+
+  buildSkeleton() {
+    const bone = 0xd8d0bc;
+    this.h = createHumanoid({ skin: bone, shirt: 0xcfc6b0, pants: 0xcfc6b0, hair: bone, hairStyle: 'shaved', boots: 0xa89f8a, belt: 0x3a2a1a });
+    const socket = new THREE.MeshBasicMaterial({ color: 0x7fe0ff });
+    for (const x of [-0.08, 0.08]) {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.02), socket);
+      eye.position.set(x, 0.3, 0.19);
+      this.h.head.add(eye);
+    }
+    this.h.handR.add(createWeapon('rusty_sword'));
+    this.materials = [this.h.materials.shirt, this.h.materials.skin, this.h.materials.pants];
+    this.barHeight = 2.3;
+    this.walkPhase = 0;
+    return this.h.root;
+  }
+
+  buildWarden() {
+    this.h = createHumanoid({ skin: 0xd6c2b0, shirt: 0x5d6168, pants: 0x3a3c40, hair: 0x9a9da3, hairStyle: 'long', beard: true });
+    this.h.cape = createCape(0x6f7378);
+    this.h.torso.add(this.h.cape);
+    this.h.handR.add(createWeapon('ember_staff'));
+    this.materials = [this.h.materials.shirt, this.h.materials.skin];
+    this.barHeight = 2.4;
+    this.walkPhase = 0;
+    this.blinkT = 0;
+    this.orbCd = 3;
+    this.hitsSinceBlink = 0;
+    this.mesh = this.h.root;
+    return this.h.root;
+  }
+
   buildHealthBar() {
     this.bar = new THREE.Group();
     const bg = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.11),
@@ -125,7 +201,7 @@ export class Enemy {
     this.scene.add(this.bar);
   }
 
-  takeDamage(amount, fromPos) {
+  takeDamage(amount, fromPos, knock = 7) {
     if (!this.alive) return;
     this.hp -= amount;
     this.flash = 0.15;
@@ -133,21 +209,23 @@ export class Enemy {
     this.state = 'chase';
     const dx = this.position.x - fromPos.x, dz = this.position.z - fromPos.z;
     const l = Math.hypot(dx, dz) || 1;
-    this.knock.set((dx / l) * 7, 0, (dz / l) * 7);
+    const k = this.def.boss ? knock * 0.3 : knock;
+    this.knock.set((dx / l) * k, 0, (dz / l) * k);
     if (this.windup >= 0 && this.windup < 0.2) this.windup = -1; // early hits interrupt the attack
+    if (this.def.boss) this.hitsSinceBlink++;
     if (this.hp <= 0) {
+      this.hp = 0;
       this.alive = false;
-      this.bar.visible = false;
-      events.emit('enemy:killed', { enemy: this });
+      if (this.bar) this.bar.visible = false;
+      events.emit(this.def.boss ? 'boss:defeated' : 'enemy:killed', { enemy: this });
     }
   }
 
   dispose() {
     this.mesh.removeFromParent();
-    this.bar.removeFromParent();
-    const toDispose = [this.mesh, this.bar];
-    for (const root of toDispose) {
-      root.traverse((o) => {
+    this.bar?.removeFromParent();
+    for (const root of [this.mesh, this.bar]) {
+      root?.traverse((o) => {
         o.geometry?.dispose();
         o.material?.dispose?.();
       });
@@ -155,9 +233,35 @@ export class Enemy {
     this.removed = true;
   }
 
-  update(dt, player, world, camera, night) {
-    const d = this.def, pos = this.position;
+  // Boss behaviour layered on top of the normal chase: blinks away when pressed, and throws orbs.
+  wardenTricks(dt, player, spells, dist) {
+    this.orbCd -= dt;
+    if (this.hitsSinceBlink >= 4) {
+      this.hitsSinceBlink = 0;
+      const a = Math.random() * Math.PI * 2;
+      const nx = player.position.x + Math.cos(a) * 7, nz = player.position.z + Math.sin(a) * 7;
+      const test = new THREE.Vector3(nx, 0, nz);
+      this.space.collide(test, 0.6);
+      events.emit('boss:blink', { from: this.position.clone(), to: test.clone() });
+      this.position.x = test.x;
+      this.position.z = test.z;
+      this.windup = -1;
+      this.orbCd = Math.min(this.orbCd, 0.6);
+    }
+    if (this.orbCd <= 0 && dist > 3 && dist < 20 && spells) {
+      const enraged = this.hp < this.def.hp * 0.5;
+      this.orbCd = enraged ? 2.2 : 3.4;
+      const base = Math.atan2(player.position.x - this.position.x, player.position.z - this.position.z);
+      const spread = enraged ? [-0.35, -0.12, 0.12, 0.35] : [-0.25, 0, 0.25];
+      for (const s of spread) spells.spawnOrb(this, base + s);
+      this.castAnim = 0.4;
+    }
+  }
+
+  update(dt, player, camera, night, spells) {
+    const d = this.def, pos = this.position, space = this.space;
     if (!this.alive) {
+      if (d.boss) return; // the boss's defeat is a scripted scene
       this.deathT += dt;
       const k = Math.max(0.01, 1 - this.deathT * 1.6);
       this.mesh.scale.set(this.size * (1 + (1 - k) * 0.4), this.size * k, this.size * (1 + (1 - k) * 0.4));
@@ -170,19 +274,21 @@ export class Enemy {
     this.aggroTimer -= dt;
     this.phase += dt;
     this.lunge = Math.max(0, this.lunge - dt);
+    this.castAnim = Math.max(0, (this.castAnim ?? 0) - dt);
 
     const px = player.position.x - pos.x, pz = player.position.z - pos.z;
     const dist = Math.hypot(px, pz);
-    const hidden = player.dead || world.isSafe(player.position.x, player.position.z);
+    const hidden = player.dead || space.isSafe(player.position.x, player.position.z);
     const aggro = d.aggro * (1 + 0.35 * night); // wolves hunt further at night
     const leash = Math.hypot(pos.x - this.home.x, pos.z - this.home.z);
 
     if (this.state !== 'chase') {
       if (!hidden && (dist < aggro || this.aggroTimer > 0)) this.state = 'chase';
-    } else if (hidden || (dist > aggro * 2 && this.aggroTimer <= 0) || leash > 55) {
+    } else if (hidden || (dist > aggro * 2 && this.aggroTimer <= 0) || (leash > 55 && !d.boss)) {
       this.state = 'return';
       this.windup = -1;
     }
+    if (d.boss && this.state === 'chase') this.wardenTricks(dt, player, spells, dist);
 
     let tx = pos.x, tz = pos.z, speed = 0;
     if (this.state === 'wander') {
@@ -234,39 +340,58 @@ export class Enemy {
     pos.x += (mx * this.speedNow + this.knock.x) * dt;
     pos.z += (mz * this.speedNow + this.knock.z) * dt;
     this.knock.multiplyScalar(Math.exp(-6 * dt));
-    world.collide(pos, d.radius * 0.8);
-    // Stay out of the pond and out of the safe camp.
-    if (isWater(pos.x, pos.z, 0.1) || world.isSafe(pos.x, pos.z)) {
+    space.collide(pos, d.radius * 0.8);
+    // Stay out of water and safe places (towns, camps).
+    if (space.blocked(pos.x, pos.z)) {
       pos.x = ox; pos.z = oz;
       this.target.copy(this.home);
     }
-    const ground = heightAt(pos.x, pos.z);
+    const ground = space.groundAt(pos.x, pos.z);
     this.mesh.rotation.y = this.facing;
+    this.animate(dt, ground, speed, hop);
 
+    const f = (this.flash / 0.15) * 0.9;
+    for (const m of this.materials) m.emissive.setRGB(f, f * 0.35, f * 0.35);
+
+    if (this.bar) {
+      this.bar.visible = this.hp < d.hp && this.state === 'chase';
+      if (this.bar.visible) {
+        this.bar.position.set(pos.x, pos.y + this.barHeight, pos.z);
+        this.bar.quaternion.copy(camera.quaternion);
+        this.barFill.scale.x = Math.max(0.001, this.hp / d.hp);
+      }
+    }
+  }
+
+  animate(dt, ground, speed, hop) {
+    const d = this.def, pos = this.position;
     if (this.type === 'slime') {
-      const airborne = speed > 0 ? hop * 0.55 : 0;
-      pos.y = ground + airborne;
+      pos.y = ground + (speed > 0 ? hop * 0.55 : 0);
       let sy = 1 + Math.sin(this.phase * 3) * 0.04;
       if (speed > 0) sy = 1 + (hop - 0.3) * 0.3;
       if (this.windup >= 0) sy = 1 - 0.35 * (this.windup / d.windup);
       if (this.lunge > 0) sy = 1.3;
       this.pivot.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy));
-    } else {
+    } else if (this.type === 'wolf') {
       pos.y = ground;
       const swing = Math.sin(this.phase * 12) * Math.min(1, this.speedNow / 3) * 0.7;
       this.legs.forEach((leg, i) => (leg.rotation.x = (i === 0 || i === 3 ? 1 : -1) * swing));
       this.head.rotation.x = this.windup >= 0 ? 0.4 : this.lunge > 0 ? -0.3 : 0;
       this.tail.rotation.y = Math.sin(this.phase * 4) * 0.3;
-    }
-
-    const f = (this.flash / 0.15) * 0.9;
-    for (const m of this.materials) m.emissive.setRGB(f, f * 0.35, f * 0.35);
-
-    this.bar.visible = this.hp < d.hp && this.state === 'chase';
-    if (this.bar.visible) {
-      this.bar.position.set(pos.x, pos.y + this.barHeight, pos.z);
-      this.bar.quaternion.copy(camera.quaternion);
-      this.barFill.scale.x = Math.max(0.001, this.hp / d.hp);
+    } else if (this.type === 'bat') {
+      const dive = this.windup >= 0 ? -0.6 * (this.windup / d.windup) : 0;
+      pos.y = ground + 1.7 + Math.sin(this.phase * 3) * 0.25 + dive;
+      const flap = Math.sin(this.phase * 26) * 0.9;
+      this.wings[0].rotation.z = flap;
+      this.wings[1].rotation.z = -flap;
+    } else {
+      pos.y = ground;
+      this.walkPhase += dt * this.speedNow * 2.2;
+      const attack = this.windup >= 0 ? (this.windup / d.windup) * 0.45 : this.lunge > 0 ? 0.45 + (0.2 - this.lunge) * 2.7 : -1;
+      animateHumanoid(this.h, {
+        phase: this.walkPhase, amount: Math.min(1, this.speedNow / 3), attack,
+        cast: this.castAnim > 0 ? 1 - this.castAnim / 0.4 : -1, t: this.phase,
+      });
     }
   }
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createNoise2D, fbm } from '../engine/noise.js';
 import { smoothstep, lerp } from '../engine/math.js';
+import { TOWNS, CAVES } from '../data/towns.js';
 
 export const WORLD_SIZE = 440;
 export const WORLD_RADIUS = 188;
@@ -13,15 +14,18 @@ export const LANDMARKS = {
   pond: { x: 60, z: 40, r: 15 },
   stones: { x: -6, z: -124 },
   oak: { x: 41, z: -61 },
-  town: { x: -8, z: 72, r: 28 }, // Millbrook, a short walk south of the meadow
   stump: { x: -19, z: 44 }, // woodcutter's axe
   hunterCamp: { x: -98, z: 36 }, // hunter's spear, at the edge of the wolf woods
 };
 
-// Dirt paths as polylines: meadow -> Millbrook, and meadow -> Oswin's camp.
+// Dirt roads as polylines linking the meadow, Oswin's camp, the stones and the four towns.
 export const PATHS = [
-  [[0, 4], [-3, 28], [-6, 50], [-8, 72]],
-  [[0, 4], [5, -4], [14, -14], [24, -26]],
+  [[0, 4], [-3, 28], [-6, 50], [-8, 72]], // meadow -> Millbrook
+  [[0, 4], [5, -4], [14, -14], [24, -26]], // meadow -> Oswin's camp
+  [[24, -26], [55, -30], [90, -24], [118, -22]], // camp -> Ashford
+  [[-8, 72], [22, 92], [55, 108], [85, 115]], // Millbrook -> Thornbury
+  [[0, 4], [-2, -40], [-5, -85], [-6, -118]], // meadow -> the standing stones
+  [[-6, -124], [-40, -122], [-70, -112], [-95, -105]], // stones -> Greywatch
 ];
 
 const hills = createNoise2D(1337);
@@ -37,16 +41,21 @@ function baseHeight(x, z) {
   return h;
 }
 
-export const TOWN_Y = baseHeight(LANDMARKS.town.x, LANDMARKS.town.z);
+// Each town and cave mouth is levelled to the natural height at its centre.
+const FLATS = [
+  ...TOWNS.map((t) => ({ x: t.x, z: t.z, inner: t.r - 2, outer: t.r + 18, y: baseHeight(t.x, t.z) })),
+  ...CAVES.map((c) => ({ x: c.x, z: c.z, inner: 6, outer: 16, y: baseHeight(c.x, c.z) })),
+];
 
 // Height is a pure function of (x, z) so gameplay can query it without touching the mesh.
 export function heightAt(x, z) {
   let h = baseHeight(x, z);
 
-  // Level ground for the village, blending out into the surrounding hills.
-  const t = LANDMARKS.town;
-  const dt = Math.hypot(x - t.x, z - t.z);
-  if (dt < t.r + 20) h = lerp(h, TOWN_Y, 1 - smoothstep(t.r - 2, t.r + 18, dt));
+  // Level ground for towns and cave mouths, blending out into the surrounding hills.
+  for (const f of FLATS) {
+    const df = Math.hypot(x - f.x, z - f.z);
+    if (df < f.outer) h = lerp(h, f.y, 1 - smoothstep(f.inner, f.outer, df));
+  }
 
   // Flat-topped hill for the standing stones.
   const s = LANDMARKS.stones;
@@ -102,7 +111,7 @@ export function createTerrainMesh() {
   const grassA = new THREE.Color(0x4f8a34), grassB = new THREE.Color(0x7aa84a);
   const dry = new THREE.Color(0xa39f5a), rock = new THREE.Color(0x77736b);
   const sand = new THREE.Color(0xb9a77a), snow = new THREE.Color(0xe6ebee), dirt = new THREE.Color(0x6b5638);
-  const { camp, stones, town } = LANDMARKS;
+  const { camp, stones } = LANDMARKS;
   const path = new THREE.Color(0x8a7050), cobble = new THREE.Color(0x8d8274);
 
   for (let i = 0; i < pos.count; i++) {
@@ -115,7 +124,7 @@ export function createTerrainMesh() {
     c.lerp(dirt, (1 - smoothstep(2.5, 5, Math.hypot(x - camp.x, z - camp.z))) * 0.8);
     c.lerp(dirt, (1 - smoothstep(6, 10, Math.hypot(x - stones.x, z - stones.z))) * 0.35);
     c.lerp(path, (1 - smoothstep(0.9, 2.0, pathDistance(x, z))) * 0.85);
-    c.lerp(cobble, 1 - smoothstep(11, 14, Math.hypot(x - town.x, z - town.z)));
+    for (const t of TOWNS) c.lerp(cobble, 1 - smoothstep(11, 14, Math.hypot(x - t.x, z - t.z)));
     colors.set([c.r, c.g, c.b], i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));

@@ -296,3 +296,24 @@ export function createHerb(x, z) {
     },
   };
 }
+
+// A small ridge tent the player can pitch, with a bedroll peeking out. Faces +z (the open flap).
+export function createTent() {
+  const g = new THREE.Group();
+  const canvas = std(0x8a6a3a, { side: THREE.DoubleSide, flatShading: true });
+  const shape = new THREE.Shape();
+  shape.moveTo(-1.3, 0);
+  shape.lineTo(1.3, 0);
+  shape.lineTo(0, 1.6);
+  shape.closePath();
+  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 2.4, bevelEnabled: false }).translate(0, 0, -1.2), canvas);
+  body.castShadow = body.receiveShadow = true;
+  g.add(body);
+  const flap = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.3), new THREE.MeshBasicMaterial({ color: 0x1a120a }));
+  flap.position.set(0, 0.6, 1.21);
+  g.add(flap);
+  const pole = std(0x4a3222);
+  for (const z of [-1.3, 1.3]) g.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.8, 5), pole, 0, 0.9, z));
+  g.add(mesh(box(0.8, 0.1, 1.0), std(0x7a3b2e), 0, 0.05, 1.5));
+  return { group: g, update() {} };
+}

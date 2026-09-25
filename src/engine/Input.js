@@ -13,7 +13,9 @@ export class Input {
     this.dragging = false;
     this.pointerLocked = false;
 
+    const typing = (e) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     addEventListener('keydown', (e) => {
+      if (typing(e)) return; // typing a name shouldn't also walk the character around
       if (BLOCKED_DEFAULTS.has(e.code)) e.preventDefault();
       if (!e.repeat) this.pressed.add(e.code);
       this.down.add(e.code);
@@ -30,8 +32,9 @@ export class Input {
 
     canvas.addEventListener('mousedown', (e) => {
       if (e.button === 0 && this.pointerLocked) this.primaryClick = true;
+      if (e.button === 2 && this.pointerLocked) this.secondaryClick = true;
       // Without pointer lock (e.g. embedded previews), dragging still turns the camera.
-      if (e.button === 2 || (e.button === 0 && !this.pointerLocked)) this.dragging = true;
+      if (!this.pointerLocked && (e.button === 0 || e.button === 2)) this.dragging = true;
     });
     addEventListener('mouseup', () => (this.dragging = false));
     addEventListener('mousemove', (e) => {
@@ -65,5 +68,6 @@ export class Input {
     this.mouseDY = 0;
     this.wheel = 0;
     this.primaryClick = false;
+    this.secondaryClick = false;
   }
 }

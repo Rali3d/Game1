@@ -1,18 +1,23 @@
 import * as THREE from 'three';
-import { createTerrainMesh, createWater, heightAt, LANDMARKS } from './Terrain.js';
+import { createTerrainMesh, createWater, heightAt, isPond, isWater, LANDMARKS, WORLD_RADIUS, WATER_LEVEL } from './Terrain.js';
 import { Sky } from './Sky.js';
 import { Vegetation } from './Vegetation.js';
 import { createCampfire, createStandingStones, getGlowTexture } from './Props.js';
 import { createTown } from './Town.js';
+import { createCaveMouth } from './Cave.js';
+import { TOWNS, CAVES } from '../data/towns.js';
 
-// Assembles the static world and owns collision + safe-zone queries.
+// Assembles the outdoor world and owns collision + safe-zone queries. It is the "outdoor space":
+// interiors and caves offer the same groundAt / collide / clamp / inWater / isSafe / blocked methods.
 export class World {
   constructor(scene) {
     this.scene = scene;
+    this.id = 'world';
+    this.outdoors = true;
     this.colliders = []; // circles { x, z, r } or rotated boxes { x, z, hw, hd, rot }
     this.animated = []; // anything with update(t, dt)
-    const { spawn, camp, stones, oak, town, stump, hunterCamp } = LANDMARKS;
-    this.safeZones = [{ x: camp.x, z: camp.z, r: 15 }, { x: town.x, z: town.z, r: town.r + 6 }];
+    const { spawn, camp, stones, oak, stump, hunterCamp } = LANDMARKS;
+    this.safeZones = [{ x: camp.x, z: camp.z, r: 15 }, ...TOWNS.map((t) => ({ x: t.x, z: t.z, r: t.r + 6 }))];
 
     scene.add(createTerrainMesh(), createWater());
     this.sky = new Sky(scene);
@@ -23,7 +28,8 @@ export class World {
       { ...camp, r: 10, grass: 3.5 },
       { ...stones, r: 15, grass: 1.5 },
       { ...oak, r: 6 },
-      { ...town, r: town.r + 6, grass: 15 },
+      ...TOWNS.map((t) => ({ x: t.x, z: t.z, r: t.r + 6, grass: 15 })),
+      ...CAVES.map((c) => ({ x: c.x, z: c.z, r: 9, grass: 4 })),
       { ...stump, r: 4, grass: 1.5 },
       { ...hunterCamp, r: 6, grass: 2 },
     ];
@@ -34,8 +40,22 @@ export class World {
     this.colliders.push({ x: camp.x, z: camp.z, r: 0.95 });
     this.animated.push(this.campfire);
 
-    this.town = createTown(scene, this.colliders, this.sky);
-    this.animated.push(this.town);
+    this.towns = TOWNS.map((def) => createTown(scene, this.colliders, this.sky, def));
+    this.animated.push(...this.towns);
+    this.doors = this.towns.flatMap((t) => t.doors);
+
+    // Cave mouths, turned to face down into the valley.
+    this.caveMouths = CAVES.map((c) => {
+      const mouth = createCaveMouth(!!c.locked);
+      const ry = Math.atan2(-c.x, -c.z);
+      mouth.position.set(c.x, heightAt(c.x, c.z), c.z);
+      mouth.rotation.y = ry;
+      scene.add(mouth);
+      const at = (lx, lz) => ({ x: c.x + lx * Math.cos(ry) + lz * Math.sin(ry), z: c.z - lx * Math.sin(ry) + lz * Math.cos(ry) });
+      for (const [lx, lz, r] of [[-3, -0.5, 1.9], [3, -0.5, 1.9], [0, -2.6, 3]]) this.colliders.push({ ...at(lx, lz), r });
+      const front = at(0, 2.2);
+      return { def: c, mesh: mouth, front: { ...front, y: heightAt(front.x, front.z), facing: ry } };
+    });
 
     this.stones = createStandingStones(stones.x, stones.z);
     scene.add(this.stones.group);
@@ -118,6 +138,29 @@ export class World {
 
   isSafe(x, z, pad = 0) {
     return this.safeZones.some((s) => Math.hypot(x - s.x, z - s.z) < s.r + pad);
+  }
+
+  townAt(x, z) {
+    return TOWNS.find((t) => Math.hypot(x - t.x, z - t.z) < t.r) ?? null;
+  }
+
+  // ---- space interface ----
+  groundAt(x, z) {
+    const h = heightAt(x, z);
+    return isPond(x, z) ? Math.max(h, WATER_LEVEL - 1.1) : h; // swim at the pond's surface
+  }
+  inWater(x, z) {
+    return isWater(x, z, -0.6);
+  }
+  blocked(x, z) {
+    return isWater(x, z, 0.1) || this.isSafe(x, z);
+  }
+  clamp(pos) {
+    const d = Math.hypot(pos.x, pos.z);
+    if (d > WORLD_RADIUS) {
+      pos.x *= WORLD_RADIUS / d;
+      pos.z *= WORLD_RADIUS / d;
+    }
   }
 
   // Returns true when a new day begins.

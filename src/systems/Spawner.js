@@ -33,7 +33,7 @@ export class Spawner {
   spawn(zone, avoidPos) {
     const spot = this.findSpot(zone, avoidPos);
     if (!spot) return false;
-    const e = new Enemy(zone.type, spot.x, spot.z, this.scene);
+    const e = new Enemy(zone.type, spot.x, spot.z, this.scene, this.world);
     e.zone = zone;
     this.enemies.push(e);
     return true;
@@ -44,7 +44,7 @@ export class Spawner {
   }
 
   update(dt, player, camera, night) {
-    for (const e of this.enemies) e.update(dt, player, this.world, camera, night);
+    for (const e of this.enemies) e.update(dt, player, camera, night);
 
     // Keep enemies from stacking on top of each other.
     const live = this.enemies.filter((e) => e.alive);

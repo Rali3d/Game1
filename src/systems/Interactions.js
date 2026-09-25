@@ -2,6 +2,7 @@
 //   { id, position: {x,y,z}, radius, label: () => string|null, onUse: () => void, prop?, onRemove? }
 // `prop` is removed from the world with the interaction; onRemove handles partial removal instead.
 // A null label hides the prompt (the object is currently not interactable).
+// `space` is the id of the space it lives in ('world' unless it's inside a building or cave).
 export class Interactions {
   constructor(world) {
     this.world = world;
@@ -25,9 +26,10 @@ export class Interactions {
     return this.items.some((it) => it.id === id);
   }
 
-  nearest(pos) {
+  nearest(pos, spaceId = 'world') {
     let best = null, bestD = Infinity;
     for (const it of this.items) {
+      if ((it.space ?? 'world') !== spaceId) continue;
       const d = Math.hypot(pos.x - it.position.x, pos.z - it.position.z);
       if (d < it.radius && d < bestD && Math.abs(pos.y - it.position.y) < 3 && it.label()) {
         best = it;

@@ -13,6 +13,7 @@ export class Engine {
     container.appendChild(renderer.domElement);
 
     this.scene = new THREE.Scene();
+    this.activeScene = this.scene; // interiors and caves are separate scenes
     this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1500);
     this.clock = new THREE.Clock();
     this.elapsed = 0;
@@ -35,7 +36,7 @@ export class Engine {
       const dt = Math.min(this.clock.getDelta(), 1 / 20);
       this.elapsed += dt;
       for (const fn of this.updaters) fn(dt, this.elapsed);
-      this.renderer.render(this.scene, this.camera);
+      this.renderer.render(this.activeScene, this.camera);
     });
   }
 }

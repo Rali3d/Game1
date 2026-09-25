@@ -77,7 +77,9 @@ export class DialogueUI {
     }
     for (let i = 0; i < 9; i++) if (input.wasPressed(`Digit${i + 1}`)) return this.choose(i);
     if (input.wasPressed('Escape')) {
-      const bye = this.options.findIndex((o) => o.next === null);
+      // Esc means "goodbye": the last option that simply ends the conversation (not one that opens a shop).
+      let bye = -1;
+      this.options.forEach((o, i) => { if (o.next === null && !o.do) bye = i; });
       if (bye >= 0) this.choose(bye);
     }
   }

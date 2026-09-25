@@ -112,7 +112,12 @@ export function wandererTree(g) {
           return 'Those blue lights. One came down north of here, by the big lone oak. Another by the pond to the southeast. The last went west, toward the trees. Follow the beams of light.';
         }
         if (q.isActive('stones')) return "The north hill. The stones. Whatever you left behind, it's waiting up there.";
-        if (g.flags.chapter1) return "The world's wide, and you've only seen a meadow of it. But that's a story for another day.";
+        if (g.quests.isActive('grey1')) return 'That man in grey... Tam at the Fallen Star in Millbrook sees everyone who passes through. Start with her.';
+        if (g.quests.isActive('grey2')) return "Old coins? Thornbury, southeast along the road from Millbrook. There's a curio dealer there who collects oddities.";
+        if (g.quests.isActive('grey3')) return 'Greywatch is the garrison past the stones, to the northwest. Captain Hale runs it. Hard man, fair man.';
+        if (g.quests.isActive('grey4')) return 'The Sunken Vault lies north of Greywatch. Take a lantern. Take two.';
+        if (g.flags.chapter2) return "You've grown, since that morning in the grass. Whatever's coming, I think you'll be ready.";
+        if (g.flags.chapter1) return "The world's wide, and you've only seen a meadow of it. Four towns in this valley, and caves under the hills. Go and look.";
         return 'Rest by my fire whenever you need it. Nothing out there will follow you in.';
       },
       options: hub,
@@ -120,10 +125,10 @@ export function wandererTree(g) {
 
     reveal: {
       text: 'So. You remember.',
-      options: [{ text: 'My name is Aren.', next: 'reveal2' }],
+      options: () => [{ text: `My name is ${g.hero.name}.`, next: 'reveal2' }],
     },
     reveal2: {
-      text: "Aren. A good name for someone who fell out of the sky. Whatever's looking for you won't find you tonight. Sit. Rest. Tomorrow, the road.",
+      text: () => `${g.hero.name}. A good name for someone who fell out of the sky. Whatever's looking for you won't find you tonight. Sit. Rest. Tomorrow, the road.`,
       onEnter: () => (g.flags.toldOswin = true),
       options: hub,
     },
@@ -134,6 +139,7 @@ export function brennaTree(g) {
   const hub = () => [
     { text: 'What other stranger?', next: 'grey', if: () => !g.flags.heardGrey },
     { text: 'That sword on your rack...', next: 'sword', if: () => g.interactions.has('rack_sword') },
+    { text: 'Show me what you have for sale.', next: null, do: () => g.openShop('brenna') },
     { text: 'Where else could I find a weapon?', next: 'weapons' },
     bye,
   ];
@@ -167,10 +173,11 @@ export function tamTree(g) {
   const q = g.quests;
   const hub = () => [
     { text: "I've brought the moonpetals.", next: 'petals_done', if: () => q.isReady('petals') },
+    { text: 'Tell me about the man in grey.', next: 'grey', if: () => q.isActive('grey1') || (g.flags.heardGrey && !g.flags.tamGrey) },
+    { text: "What's on the menu?", next: null, do: () => g.openShop('tam') },
     { text: 'Could I rest here?', next: 'rest' },
     { text: 'What do you know about the stones on the hill?', next: 'stones' },
     { text: 'Do you need help with anything?', next: 'petals_offer', if: () => !q.status('petals') },
-    { text: 'Tell me about the man in grey.', next: 'grey', if: () => g.flags.heardGrey && !g.flags.tamGrey },
     bye,
   ];
   return {
@@ -185,7 +192,7 @@ export function tamTree(g) {
     rest: {
       text: "A bed's yours whenever you want it. Nobody pays at the Fallen Star, least of all someone the sky dropped on us.",
       options: [
-        { text: 'Rest for a while. (Heal and save)', next: null, do: () => g.rest('town') },
+        { text: 'Rest for a while. (Heal and save)', next: null, do: () => g.rest('millbrook') },
         { text: 'Maybe later.', next: 'hub' },
       ],
     },
@@ -206,8 +213,16 @@ export function tamTree(g) {
       options: hub,
     },
     grey: {
-      text: "Stayed one night. Paid in coin nobody's seen minted in a hundred years. Left before dawn, walking north toward the stones. The dogs wouldn't go near him. Dogs know things.",
-      onEnter: () => (g.flags.tamGrey = true),
+      text: () => (q.isActive('grey1')
+        ? "Stayed one night. Paid in coin nobody's seen minted in a hundred years. Left before dawn, walking north toward the stones. The dogs wouldn't go near him. Dogs know things. Here, take one of his coins. I don't want it in my till. If anyone can tell you where it's from, it's Marisol, the curio dealer in Thornbury."
+        : "Stayed one night. Paid in coin nobody's seen minted in a hundred years. Left before dawn, walking north toward the stones. The dogs wouldn't go near him. Dogs know things."),
+      onEnter: () => {
+        g.flags.tamGrey = true;
+        if (q.isActive('grey1')) {
+          if (!g.inventory.has('old_coin')) g.giveItem('old_coin');
+          g.bump('clue:tam');
+        }
+      },
       options: hub,
     },
   };

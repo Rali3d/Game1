@@ -21,8 +21,11 @@
       <div class="status-head"><span id="char-name">???</span><span id="char-level">Lv 1</span></div>
       <div class="bar" id="bar-hp"><div class="fill"></div><span class="label"></span></div>
       <div class="bar" id="bar-st"><div class="fill"></div></div>
+      <div class="bar hidden" id="bar-mp"><div class="fill"></div></div>
       <div class="bar" id="bar-xp"><div class="fill"></div></div>
+      <div class="status-foot"><span id="coins">🪙 0</span><span id="where"></span></div>
     </div>
+    <div id="bossbar" class="hidden"><div class="name"></div><div class="bar"><div class="fill"></div></div></div>
     <div id="tracker"></div>
     <div id="minimap-wrap">
       <canvas id="minimap" width="180" height="180"></canvas>
@@ -32,6 +35,10 @@
     <div id="log"></div>
     <div id="hotbar">
       <div class="slot" id="slot-heal"><kbd>1</kbd><span class="icon">🧪</span><span class="count">0</span></div>
+      <div class="slot hidden" id="slot-fire"><kbd>R</kbd><span class="icon">🔥</span></div>
+      <div class="slot hidden" id="slot-lantern"><kbd>L</kbd><span class="icon">🏮</span></div>
+      <div class="slot hidden" id="slot-tent"><kbd>T</kbd><span class="icon">⛺</span></div>
+      <div class="slot" id="slot-map"><kbd>M</kbd><span class="icon">🗺️</span></div>
     </div>
     <div id="lock-hint" class="hidden">Click the view to control the camera · or drag to look</div>
   </div>
@@ -47,7 +54,7 @@
       <h1>Fieldborn</h1>
       <p class="tagline">You wake in an open field. You don't know how you got there.</p>
       <div class="buttons">
-        <button id="btn-continue" class="hidden">Continue</button>
+        <button id="btn-load" class="hidden">Load Game</button>
         <button id="btn-new" class="primary">New Game</button>
       </div>
       <dl class="controls">
@@ -58,8 +65,36 @@
         <dt>Click / F</dt><dd>Attack</dd>
         <dt>E</dt><dd>Interact</dd>
         <dt>1</dt><dd>Drink a draught</dd>
-        <dt>I / J</dt><dd>Inventory / Journal</dd>
+        <dt>I / J / M</dt><dd>Inventory / Journal / Map</dd>
       </dl>
+    </div>
+  </section>
+
+  <!-- Save slots -->
+  <section id="slots" class="screen dim hidden">
+    <div class="panel wide">
+      <header><h2 id="slots-title">Choose a Save Slot</h2><button id="btn-slots-back" class="close" aria-label="Back">✕</button></header>
+      <div id="slot-list"></div>
+    </div>
+  </section>
+
+  <!-- Character creation (the 3D preview is the live scene behind this panel) -->
+  <section id="creator" class="hidden">
+    <div class="panel creator-panel">
+      <h2>Who Are You?</h2>
+      <p class="hint creator-note">You won't remember your name until later. Choose it now anyway.</p>
+      <label class="field"><span>Name</span><input id="creator-name" maxlength="16" placeholder="Aren" autocomplete="off" spellcheck="false" /></label>
+      <div class="field"><span>Body</span><div class="opts" id="creator-body"></div></div>
+      <div class="field"><span>Skin</span><div class="opts" id="creator-skin"></div></div>
+      <div class="field"><span>Hair</span><div class="opts" id="creator-style"></div></div>
+      <div class="field"><span>Hair colour</span><div class="opts" id="creator-hair"></div></div>
+      <div class="field"><span>Tunic</span><div class="opts" id="creator-outfit"></div></div>
+      <div class="field"><span>Beard</span><div class="opts" id="creator-beard"></div></div>
+      <div class="buttons">
+        <button id="creator-back">Back</button>
+        <button id="creator-random">Randomise</button>
+        <button id="creator-begin" class="primary">Begin</button>
+      </div>
     </div>
   </section>
 
@@ -77,6 +112,25 @@
       <div class="card-body"></div>
       <p class="card-hint">Press <kbd>E</kbd> or click to continue</p>
     </article>
+  </section>
+
+  <!-- Merchant -->
+  <section id="shop" class="screen dim hidden">
+    <div class="panel narrow shop-panel">
+      <header><h2 class="shop-name"></h2><span class="shop-coins"></span></header>
+      <div class="tabs"><button data-tab="buy">Buy</button><button data-tab="sell">Sell</button></div>
+      <div class="shop-list"></div>
+      <footer class="hint"><kbd>Esc</kbd> to leave</footer>
+    </div>
+  </section>
+
+  <!-- World map -->
+  <section id="worldmap" class="screen dim hidden">
+    <div class="panel map-panel">
+      <header><h2>The Valley</h2><button class="close" data-close aria-label="Close">✕</button></header>
+      <canvas id="worldmap-canvas" width="720" height="720"></canvas>
+      <footer class="hint"><kbd>M</kbd> or <kbd>Esc</kbd> to close · caves appear once you've found them</footer>
+    </div>
   </section>
 
   <section id="dialogue" class="hidden">
@@ -132,9 +186,12 @@
         <dt>Click / F</dt><dd>Attack</dd>
         <dt>E</dt><dd>Interact / talk</dd>
         <dt>1</dt><dd>Drink a draught</dd>
-        <dt>I / J</dt><dd>Inventory / Journal</dd>
+        <dt>R / right-click</dt><dd>Fireball (once learned)</dd>
+        <dt>L</dt><dd>Lantern on/off</dd>
+        <dt>T</dt><dd>Pitch your tent</dd>
+        <dt>I / J / M</dt><dd>Inventory / Journal / Map</dd>
       </dl>
-      <p class="hint">Resting at a campfire also saves.</p>
+      <p class="hint">Resting at a campfire, an inn or your tent also saves.</p>
     </div>
   </section>
 

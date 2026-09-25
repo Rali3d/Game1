@@ -33,12 +33,35 @@ export const SHARD_MEMORIES = [
   },
 ];
 
-export const STONES_REVEAL = {
+export const stonesReveal = (name) => ({
   kind: 'Memory',
   title: 'The Circle Remembers',
   body: `<p>The altar is warm beneath your palm. One by one the stones wake, humming, and the last memory settles into place like a key turning in a lock.</p>
-<p>Your name is <b>Aren</b>.</p>
+<p>Your name is <b>${name}</b>.</p>
 <p>You came to this meadow to forget something. And something, somewhere, is still looking for you.</p>`,
+});
+
+export const FIRE_AWAKENS = {
+  kind: 'Something returns',
+  title: 'Fire in Your Hands',
+  body: `<p>As the memory fades, your palm grows warm, then hot. A small flame curls up from your fingers and doesn't burn you.</p>
+<p>You've done this before. Many times.</p>
+<p class="muted">You can now cast <b>Fireball</b>: press <b>R</b>, or right-click while the mouse is captured. It costs mana, which refills over time.</p>`,
+};
+
+export const WARDEN_FALLS = {
+  kind: 'The Sunken Vault',
+  title: 'The Man in Grey',
+  body: `<p>The grey figure staggers, drops to one knee, and raises an open hand. Not to strike. To stop you.</p>
+<p>Up close his face is lined and tired, and horribly familiar.</p>`,
+};
+
+export const CHAPTER_II_END = {
+  kind: 'Chapter II',
+  title: 'The Warden',
+  body: `<p>Corvin steps into a seam of pale light and is gone. His grey coat lies folded on the stone where he knelt.</p>
+<p>You know your name, your teacher, and what you carried across. You don't yet know who wrote the letter, or what is waiting on the other side of the stones.</p>
+<p class="muted">The valley is still yours to explore. The story will continue.</p>`,
 };
 
 export const CHAPTER_END = {

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { createHumanoid, animateHumanoid, createCloak } from './Humanoid.js';
-import { heightAt } from '../world/Terrain.js';
+import { createHumanoid, animateHumanoid, createCape } from './Humanoid.js';
 import { damp, dampAngle, angleDiff, clamp, rand } from '../engine/math.js';
 import { glowSprite } from '../world/Props.js';
 
@@ -24,19 +23,18 @@ function markerSprite() {
 }
 
 // A townsperson or traveller. Options:
-//   look: humanoid colours { skin, shirt, pants, hair }
-//   beard, cloak (colour), apron (colour), staff (lantern staff), scale
+//   look: humanoid appearance { gender, skin, shirt, pants, hair, hairStyle, beard }
+//   cloak (colour), apron (colour), staff (lantern staff), scale
 //   wander: radius to stroll around the spawn point (otherwise the NPC stands still)
+// `space` is where they live: the outdoor world or a building interior.
 export class NPC {
-  constructor(scene, x, z, facing, opts = {}) {
-    const h = (this.h = createHumanoid(opts.look));
-    if (opts.beard) {
-      const beard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.24, 0.1), h.materials.hair);
-      beard.position.set(0, 0.12, 0.19);
-      beard.castShadow = true;
-      h.head.add(beard);
+  constructor(scene, x, z, facing, opts = {}, space) {
+    this.space = space;
+    const h = (this.h = createHumanoid({ ...opts.look, beard: opts.beard ?? opts.look?.beard }));
+    if (opts.cloak) {
+      h.cape = createCape(opts.cloak);
+      h.torso.add(h.cape);
     }
-    if (opts.cloak) h.torso.add(createCloak(opts.cloak));
     if (opts.apron) {
       const apron = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.85, 0.04),
         new THREE.MeshStandardMaterial({ color: opts.apron, roughness: 0.95 }));
@@ -48,7 +46,7 @@ export class NPC {
 
     this.mesh = h.root;
     this.mesh.scale.setScalar(opts.scale ?? 1);
-    this.mesh.position.set(x, heightAt(x, z), z);
+    this.mesh.position.set(x, space.groundAt(x, z), z);
     this.position = this.mesh.position;
     this.home = new THREE.Vector3(x, 0, z);
     this.baseFacing = facing;
@@ -89,7 +87,7 @@ export class NPC {
     this.marker.visible = visible;
   }
 
-  update(dt, t, playerPos, world) {
+  update(dt, t, playerPos) {
     const dx = playerPos.x - this.position.x, dz = playerPos.z - this.position.z;
     const dist = Math.hypot(dx, dz);
     const toPlayer = Math.atan2(dx, dz);
@@ -109,8 +107,8 @@ export class NPC {
         this.position.x += (tx / td) * speed * dt;
         this.position.z += (tz / td) * speed * dt;
         this.collider.x = Infinity; // don't collide with our own collider
-        world.collide(this.position, this.collider.r);
-        this.position.y = heightAt(this.position.x, this.position.z);
+        this.space.collide(this.position, this.collider.r);
+        this.position.y = this.space.groundAt(this.position.x, this.position.z);
       }
     } else if (this.talking) {
       this.facing = dampAngle(this.facing, toPlayer, 4, dt);

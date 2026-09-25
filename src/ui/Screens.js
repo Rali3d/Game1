@@ -1,5 +1,6 @@
 import { ITEMS } from '../data/items.js';
 import { SHARD_MEMORIES, LETTER } from '../data/story.js';
+import { listSaves, deleteSave } from '../systems/SaveGame.js';
 
 const $ = (s) => document.querySelector(s);
 const show = (el) => el.classList.remove('hidden');
@@ -20,8 +21,31 @@ export class Screens {
     this.cards = [];
     this.selected = null;
 
-    $('#btn-new').addEventListener('click', () => game.newGame());
-    $('#btn-continue').addEventListener('click', () => game.continueGame());
+    this.slots = $('#slots');
+    $('#btn-new').addEventListener('click', () => this.showSlots('new'));
+    $('#btn-load').addEventListener('click', () => this.showSlots('load'));
+    $('#btn-slots-back').addEventListener('click', () => {
+      hide(this.slots);
+      this.showTitle();
+    });
+    this.slots.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-slot]');
+      if (!btn) return;
+      const slot = Number(btn.dataset.slot);
+      if (btn.dataset.act === 'delete') {
+        if (btn.dataset.confirm) {
+          deleteSave(slot);
+          this.showSlots(this.slotMode);
+        } else {
+          btn.dataset.confirm = '1';
+          btn.textContent = 'Really delete?';
+        }
+        return;
+      }
+      hide(this.slots);
+      if (this.slotMode === 'load') game.continueGame(slot);
+      else game.newGame(slot);
+    });
     $('#btn-resume').addEventListener('click', () => game.resume());
     $('#btn-save').addEventListener('click', () => game.save(true));
     $('#btn-respawn').addEventListener('click', () => game.respawn());
@@ -48,9 +72,32 @@ export class Screens {
   }
 
   // ---- Title / intro ----
-  showTitle(hasSave) {
+  showTitle() {
     show(this.title);
-    $('#btn-continue').classList.toggle('hidden', !hasSave);
+    $('#btn-load').classList.toggle('hidden', !listSaves().some((s) => s.data));
+  }
+
+  // Save-slot picker, for starting a new game ('new') or loading one ('load').
+  showSlots(mode) {
+    this.slotMode = mode;
+    hide(this.title);
+    show(this.slots);
+    $('#slots-title').textContent = mode === 'load' ? 'Load a Game' : 'Choose a Save Slot';
+    $('#slot-list').innerHTML = listSaves().map(({ slot, data }) => {
+      if (!data) {
+        return `<div class="slot-card empty"><div class="slot-head">Slot ${slot}</div><p class="slot-sub">Empty</p>
+          ${mode === 'new' ? `<button class="primary" data-slot="${slot}">Start here</button>` : ''}</div>`;
+      }
+      const when = data.savedAt ? new Date(data.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+      const name = data.flags?.chapter1 ? data.hero?.name ?? data.name : '???';
+      return `<div class="slot-card"><div class="slot-head">Slot ${slot}: ${name}</div>
+        <p class="slot-sub">Level ${data.player?.stats?.level ?? 1} · Day ${data.day ?? 1} · ${data.where ?? 'The meadow'}</p>
+        <p class="slot-when">${when}</p>
+        <div class="buttons">
+          <button class="primary" data-slot="${slot}">${mode === 'load' ? 'Load' : 'Overwrite'}</button>
+          <button data-slot="${slot}" data-act="delete">Delete</button>
+        </div></div>`;
+    }).join('');
   }
 
   hideTitle() {
@@ -128,6 +175,8 @@ export class Screens {
   closeMenu() {
     hide(this.inventory);
     hide(this.journal);
+    this.g.shopUI?.hide();
+    this.g.worldMap?.hide();
     this.menu = null;
     this.g.setMode('play');
   }
@@ -160,8 +209,11 @@ export class Screens {
     if (it?.type === 'consumable') action = 'Use';
     if ((it?.type === 'weapon' || it?.type === 'armor') && !equipped.has(this.selected)) action = 'Equip';
     if (this.selected === 'torn_letter') action = 'Read';
+    if (this.selected === 'lantern') action = p.lanternOn ? 'Put out' : 'Light';
+    if (this.selected === 'tent') action = g.tent ? '' : 'Pitch tent';
+    if (it?.type === 'tome') action = 'Read';
     const pace = it?.speed < 0.49 ? 'quick' : it?.speed > 0.6 ? 'slow' : 'steady';
-    const stat = it?.damage ? `<p class="stat">+${it.damage} attack · ${it.reach} reach · ${pace} swing</p>` : it?.defense ? `<p class="stat">+${it.defense} defense</p>` : it?.heal ? `<p class="stat">Restores ${it.heal} HP</p>` : '';
+    const stat = it?.damage ? `<p class="stat">+${it.damage} attack · ${it.reach} reach · ${pace} swing</p>` : it?.defense ? `<p class="stat">+${it.defense} defense</p>` : it?.heal ? `<p class="stat">Restores ${it.heal} HP</p>` : it?.mana ? `<p class="stat">Restores ${it.mana} mana</p>` : '';
     this.inventory.querySelector('.inv-detail').innerHTML = it
       ? `<h3>${it.icon} ${it.name}</h3><p class="type">${it.type}</p><p>${it.desc}</p>${stat}
          ${action ? `<button class="primary" data-action data-id="${this.selected}">${action}</button>` : ''}`
@@ -176,6 +228,8 @@ export class Screens {
         <dt>Attack</dt><dd>${p.attackPower}</dd>
         <dt>Defense</dt><dd>${p.defense}</dd>
         <dt>Experience</dt><dd>${s.xp} / ${p.xpToNext}</dd>
+        <dt>Mana</dt><dd>${Math.floor(s.mana)} / ${s.maxMana}</dd>
+        <dt>Coins</dt><dd>🪙 ${g.coins}</dd>
         <dt>Weapon</dt><dd>${ITEMS[p.equipment.weapon]?.name ?? 'Bare hands'}</dd>
         <dt>Armor</dt><dd>${ITEMS[p.equipment.armor]?.name ?? 'Ragged tunic'}</dd>
       </dl>`;

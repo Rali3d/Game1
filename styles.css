@@ -295,3 +295,70 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
   .inv-layout { grid-template-columns: 1fr; }
   .controls { grid-template-columns: auto 1fr; }
 }
+
+/* ---------------- Round 3: mana, coins, boss, tools ---------------- */
+#bar-mp { height: 7px; }
+#bar-mp .fill { background: linear-gradient(#8fb8ff, #4a74d9); }
+.status-foot { display: flex; justify-content: space-between; margin-top: 7px; font-size: 14px; color: var(--ink-dim); }
+#coins { color: var(--gold); font-family: var(--display); }
+#where { font-style: italic; }
+
+#bossbar { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: min(520px, 60vw); text-align: center; }
+#bossbar .name { font-family: var(--display); color: #d9dde6; letter-spacing: 0.1em; text-shadow: 0 2px 6px #000; margin-bottom: 4px; }
+#bossbar .bar { height: 14px; }
+#bossbar .fill { background: linear-gradient(#b8c2d9, #6a7488); }
+
+#hotbar .slot.dim { opacity: 0.45; }
+#hotbar .slot.on { border-color: var(--gold); box-shadow: 0 0 14px rgba(255, 196, 107, 0.5); }
+
+/* Save slots */
+#slot-list { display: grid; gap: 12px; }
+.slot-card { border: 1px solid var(--edge); border-radius: 8px; padding: 12px 16px; background: rgba(255, 240, 200, 0.04); }
+.slot-card.empty { opacity: 0.85; }
+.slot-head { font-family: var(--display); font-size: 18px; color: var(--gold); }
+.slot-sub { margin: 4px 0; color: var(--ink); }
+.slot-when { margin: 0 0 8px; font-size: 13px; color: var(--ink-faint); }
+.slot-card .buttons { justify-content: flex-start; }
+
+/* Character creator: panel on the left, the live 3D character on the right */
+#creator { position: fixed; inset: 0; display: flex; align-items: center; padding: 16px; pointer-events: none; }
+.creator-panel { pointer-events: auto; width: min(420px, 100%); background: rgba(27, 22, 17, 0.92); }
+.creator-note { margin: -6px 0 12px; }
+.field { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 10px; margin-bottom: 10px; }
+.field > span { font-family: var(--display); font-size: 13px; color: var(--ink-dim); }
+.field input {
+  font: inherit; font-size: 18px; color: var(--ink); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--edge);
+  border-radius: 6px; padding: 7px 10px; outline: none; width: 100%;
+}
+.field input:focus { border-color: var(--gold); }
+.opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 5px 11px; font-size: 13px; }
+.chip.on { border-color: var(--gold); background: rgba(232, 196, 106, 0.2); color: #fff6dc; }
+.swatch { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid rgba(0, 0, 0, 0.4); }
+.swatch.on { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(232, 196, 106, 0.5); }
+.creator-panel .buttons { margin-top: 14px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* Shop */
+.shop-panel header { align-items: baseline; }
+.shop-coins { font-family: var(--display); color: var(--gold); font-size: 18px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.tabs button { flex: 1; padding: 7px; }
+.tabs button.on { border-color: var(--gold); background: rgba(232, 196, 106, 0.18); }
+.shop-list { display: grid; gap: 8px; max-height: 55vh; overflow: auto; }
+.shop-row { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid rgba(232, 204, 140, 0.18); border-radius: 6px; }
+.shop-row .icon { font-size: 26px; text-align: center; }
+.shop-row .info small { display: block; color: var(--ink-faint); font-size: 14px; }
+.shop-row .owned { color: var(--ink-faint); font-weight: 400; }
+.shop-row button { padding: 6px 12px; white-space: nowrap; }
+.shop-row button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* World map */
+.map-panel { width: min(780px, 100%); }
+#worldmap-canvas { display: block; width: 100%; max-height: 72vh; aspect-ratio: 1; object-fit: contain; border-radius: 8px; border: 1px solid var(--edge); background: #141a12; }
+
+@media (max-width: 900px) {
+  #creator { align-items: flex-end; }
+  .field { grid-template-columns: 80px 1fr; }
+}
+.floater.coin { color: var(--gold); font-size: 17px; }
+.floater.mana { color: #8fb8ff; font-size: 17px; }

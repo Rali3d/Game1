@@ -29,6 +29,16 @@ export class HUD {
     this.healIcon = $('#slot-heal .icon');
     this.healCount = $('#slot-heal .count');
     this.lockHint = $('#lock-hint');
+    this.mpBar = $('#bar-mp');
+    this.mpFill = $('#bar-mp .fill');
+    this.coins = $('#coins');
+    this.slotFire = $('#slot-fire');
+    this.slotLantern = $('#slot-lantern');
+    this.slotTent = $('#slot-tent');
+    this.bossBar = $('#bossbar');
+    this.bossFill = $('#bossbar .fill');
+    this.bossName = $('#bossbar .name');
+    this.where = $('#where');
     this.floaterLayer = $('#floaters');
     this.vignette = $('#vignette');
     this.floaters = [];
@@ -52,6 +62,23 @@ export class HUD {
     const hh = String(Math.floor(hours)).padStart(2, '0');
     const mm = String(Math.floor((hours % 1) * 4) * 15).padStart(2, '0');
     setText(this.clock, `${g.world.sky.isNight ? '☾' : '☀'} Day ${g.day} · ${hh}:${mm}`);
+
+    this.mpBar.classList.toggle('hidden', !g.flags.fireball);
+    setWidth(this.mpFill, s.mana / s.maxMana);
+    setText(this.coins, `🪙 ${g.coins}`);
+    this.slotFire.classList.toggle('hidden', !g.flags.fireball);
+    this.slotFire.classList.toggle('dim', s.mana < 15);
+    this.slotLantern.classList.toggle('hidden', !g.inventory.has('lantern'));
+    this.slotLantern.classList.toggle('on', p.lanternOn);
+    this.slotTent.classList.toggle('hidden', !g.inventory.has('tent'));
+    setText(this.where, g.locationName());
+
+    const boss = g.boss?.alive && g.boss.state === 'chase' ? g.boss : null;
+    this.bossBar.classList.toggle('hidden', !boss);
+    if (boss) {
+      setWidth(this.bossFill, boss.hp / boss.def.hp);
+      setText(this.bossName, boss.def.name);
+    }
 
     const potions = g.inventory.count('potion');
     const useHerb = potions === 0 && g.inventory.count('herb') > 0;

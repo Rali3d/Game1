@@ -63,6 +63,7 @@ export class QuestSystem {
     this.g.hud.toast(`<b>Quest complete:</b> ${q.title}`, 'quest-done');
     for (const [item, n] of Object.entries(r.take || {})) this.g.inventory.remove(item, n);
     if (r.xp) this.g.grantXp(r.xp);
+    if (r.coins) this.g.giveCoins(r.coins);
     for (const [item, n] of Object.entries(r.items || {})) this.g.giveItem(item, n);
     events.emit('quest:completed', id);
     (q.next || []).forEach((n) => this.start(n));
