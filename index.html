@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fieldborn</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div id="game"></div>
+
+  <!-- In-game HUD -->
+  <div id="hud" class="hidden">
+    <div id="status" class="panel-lite">
+      <div class="status-head"><span id="char-name">???</span><span id="char-level">Lv 1</span></div>
+      <div class="bar" id="bar-hp"><div class="fill"></div><span class="label"></span></div>
+      <div class="bar" id="bar-st"><div class="fill"></div></div>
+      <div class="bar" id="bar-xp"><div class="fill"></div></div>
+    </div>
+    <div id="tracker"></div>
+    <div id="minimap-wrap">
+      <canvas id="minimap" width="180" height="180"></canvas>
+      <div id="clock"></div>
+    </div>
+    <div id="prompt" class="hidden"></div>
+    <div id="log"></div>
+    <div id="hotbar">
+      <div class="slot" id="slot-heal"><kbd>1</kbd><span class="icon">🧪</span><span class="count">0</span></div>
+    </div>
+    <div id="lock-hint" class="hidden">Click the view to control the camera · or drag to look</div>
+  </div>
+  <div id="floaters"></div>
+  <div id="vignette"></div>
+  <div id="fade"></div>
+
+  <!-- Title -->
+  <section id="title" class="screen">
+    <div class="title-card">
+      <p class="eyebrow">A small 3D role-playing game</p>
+      <h1>Fieldborn</h1>
+      <p class="tagline">You wake in an open field. You don't know how you got there.</p>
+      <div class="buttons">
+        <button id="btn-continue" class="hidden">Continue</button>
+        <button id="btn-new" class="primary">New Game</button>
+      </div>
+      <dl class="controls">
+        <dt>WASD</dt><dd>Move</dd>
+        <dt>Mouse</dt><dd>Look (click to capture)</dd>
+        <dt>Shift</dt><dd>Run</dd>
+        <dt>Space</dt><dd>Jump</dd>
+        <dt>Click / F</dt><dd>Attack</dd>
+        <dt>E</dt><dd>Interact</dd>
+        <dt>1</dt><dd>Drink a draught</dd>
+        <dt>I / J</dt><dd>Inventory / Journal</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- Opening narration -->
+  <section id="intro" class="screen hidden">
+    <div id="intro-lines"></div>
+    <p id="intro-prompt" class="hidden">Press any key to open your eyes</p>
+  </section>
+
+  <!-- Story cards: letters, memories, chapter breaks -->
+  <section id="card" class="screen dim hidden">
+    <article class="card">
+      <p class="card-kind"></p>
+      <h2 class="card-title"></h2>
+      <div class="card-body"></div>
+      <p class="card-hint">Press <kbd>E</kbd> or click to continue</p>
+    </article>
+  </section>
+
+  <section id="dialogue" class="hidden">
+    <div class="dlg-speaker"></div>
+    <div class="dlg-text"></div>
+    <div class="dlg-options hidden"></div>
+  </section>
+
+  <section id="inventory" class="screen dim hidden">
+    <div class="panel wide">
+      <header><h2>Inventory</h2><button class="close" data-close aria-label="Close">✕</button></header>
+      <div class="inv-layout">
+        <div class="inv-grid"></div>
+        <aside class="inv-side">
+          <div class="inv-detail"></div>
+          <div class="char-sheet"></div>
+        </aside>
+      </div>
+      <footer class="hint"><kbd>I</kbd> or <kbd>Esc</kbd> to close</footer>
+    </div>
+  </section>
+
+  <section id="journal" class="screen dim hidden">
+    <div class="panel wide">
+      <header><h2>Journal</h2><button class="close" data-close aria-label="Close">✕</button></header>
+      <div class="journal-body"></div>
+      <footer class="hint"><kbd>J</kbd> or <kbd>Esc</kbd> to close</footer>
+    </div>
+  </section>
+
+  <section id="pause" class="screen dim hidden">
+    <div class="panel narrow">
+      <h2>Paused</h2>
+      <div class="buttons column">
+        <button id="btn-resume" class="primary">Resume</button>
+        <button id="btn-save">Save Game</button>
+      </div>
+      <dl class="controls">
+        <dt>WASD</dt><dd>Move</dd>
+        <dt>Mouse / Q / ←→</dt><dd>Turn camera</dd>
+        <dt>Wheel</dt><dd>Zoom</dd>
+        <dt>Shift</dt><dd>Run</dd>
+        <dt>Space</dt><dd>Jump</dd>
+        <dt>Click / F</dt><dd>Attack</dd>
+        <dt>E</dt><dd>Interact / talk</dd>
+        <dt>1</dt><dd>Drink a draught</dd>
+        <dt>I / J</dt><dd>Inventory / Journal</dd>
+      </dl>
+      <p class="hint">Resting at a campfire also saves.</p>
+    </div>
+  </section>
+
+  <section id="death" class="screen dim red hidden">
+    <div class="panel narrow center">
+      <h2>Darkness, again.</h2>
+      <p>The grass is cold against your cheek. Somewhere, a fire crackles.</p>
+      <button id="btn-respawn" class="primary">Rise</button>
+    </div>
+  </section>
+
+  <div id="boot-error" class="hidden"></div>
+  <noscript>This game needs JavaScript and WebGL.</noscript>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

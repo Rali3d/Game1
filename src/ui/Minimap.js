@@ -1,0 +1,126 @@
+import * as THREE from 'three';
+import { heightAt, isWater, WORLD_SIZE } from '../world/Terrain.js';
+import { smoothstep } from '../engine/math.js';
+
+const VIEW = 70; // world units from centre to edge of the map
+const TEX = 220; // terrain image resolution (2 world units per pixel)
+
+// North-up circular minimap drawn with 2D canvas over a pre-rendered terrain image.
+export class Minimap {
+  constructor(canvas, game) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.g = game;
+    this.image = this.renderTerrain(game.world.vegetation.treePoints);
+  }
+
+  renderTerrain(trees) {
+    const c = document.createElement('canvas');
+    c.width = c.height = TEX;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(TEX, TEX);
+    const low = new THREE.Color(0x4f7d35), high = new THREE.Color(0x8c8a6a), water = new THREE.Color(0x35688c);
+    const col = new THREE.Color();
+    const scale = WORLD_SIZE / TEX;
+    for (let py = 0; py < TEX; py++) {
+      for (let px = 0; px < TEX; px++) {
+        const x = -WORLD_SIZE / 2 + (px + 0.5) * scale;
+        const z = -WORLD_SIZE / 2 + (py + 0.5) * scale;
+        const h = heightAt(x, z);
+        if (isWater(x, z)) col.copy(water);
+        else col.copy(low).lerp(high, smoothstep(2, 30, h)).multiplyScalar(0.85 + (h % 3) / 20);
+        const i = (py * TEX + px) * 4;
+        img.data[i] = col.r * 255;
+        img.data[i + 1] = col.g * 255;
+        img.data[i + 2] = col.b * 255;
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    ctx.fillStyle = 'rgba(20, 45, 20, 0.55)';
+    for (const t of trees) {
+      ctx.beginPath();
+      ctx.arc((t.x + WORLD_SIZE / 2) / scale, (t.z + WORLD_SIZE / 2) / scale, 1.1 * t.s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return c;
+  }
+
+  draw() {
+    const { ctx, canvas, g } = this;
+    const W = canvas.width, R = W / 2;
+    const p = g.player.position;
+    const s = W / (VIEW * 2);
+    const scale = WORLD_SIZE / TEX;
+
+    ctx.clearRect(0, 0, W, W);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(R, R, R - 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = '#1d2a1a';
+    ctx.fillRect(0, 0, W, W);
+    ctx.drawImage(this.image,
+      (p.x - VIEW + WORLD_SIZE / 2) / scale, (p.z - VIEW + WORLD_SIZE / 2) / scale, (VIEW * 2) / scale, (VIEW * 2) / scale,
+      0, 0, W, W);
+
+    const toScreen = (x, z) => [(x - p.x) * s + R, (z - p.z) * s + R];
+    const dot = (x, z, color, r) => {
+      const [sx, sy] = toScreen(x, z);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    };
+
+    for (const e of g.spawner.enemies) {
+      if (e.alive && Math.hypot(e.position.x - p.x, e.position.z - p.z) < VIEW) dot(e.position.x, e.position.z, '#e0503d', 2.5);
+    }
+    for (const m of g.mapMarkers()) {
+      let [sx, sy] = toScreen(m.x, m.z);
+      const dx = sx - R, dy = sy - R, d = Math.hypot(dx, dy);
+      if (d > R - 9) {
+        if (!m.edge) continue;
+        // Pin off-screen objectives to the rim so they still point the way.
+        sx = R + (dx / d) * (R - 9);
+        sy = R + (dy / d) * (R - 9);
+      }
+      ctx.fillStyle = m.color;
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (m.shape === 'diamond') {
+        ctx.moveTo(sx, sy - 6); ctx.lineTo(sx + 5, sy); ctx.lineTo(sx, sy + 6); ctx.lineTo(sx - 5, sy);
+        ctx.closePath();
+      } else {
+        ctx.arc(sx, sy, m.r || 4, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+      ctx.fill();
+    }
+
+    // Player arrow
+    const f = g.player.facing;
+    ctx.translate(R, R);
+    ctx.rotate(-f + Math.PI);
+    ctx.fillStyle = '#fff6dc';
+    ctx.strokeStyle = '#1a1208';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -8); ctx.lineTo(5.5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5.5, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(232, 214, 170, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(R, R, R - 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#f4e6c0';
+    ctx.font = 'bold 12px Cinzel, Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('N', R, 14);
+  }
+}
