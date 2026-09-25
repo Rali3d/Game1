@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createHumanoid, animateHumanoid, createSword, createCloak } from './Humanoid.js';
+import { createHumanoid, animateHumanoid, createWeapon, createCloak } from './Humanoid.js';
 import { heightAt, isPond, isWater, WORLD_RADIUS, WATER_LEVEL } from '../world/Terrain.js';
 import { clamp, damp, dampAngle, lerp, easeInOut } from '../engine/math.js';
 import { events } from '../engine/EventBus.js';
@@ -12,9 +12,7 @@ export class Player {
     this.h = createHumanoid({ shirt: 0x8a7a62, pants: 0x3f3a33 });
     this.mesh = this.h.root;
     scene.add(this.mesh);
-    this.sword = createSword();
-    this.sword.visible = false;
-    this.h.handR.add(this.sword);
+    this.weaponMesh = null;
     this.cloak = createCloak(0x6e3b2c);
     this.cloak.visible = false;
     this.h.torso.add(this.cloak);
@@ -49,14 +47,21 @@ export class Player {
     return (this.stats.level - 1) + (ITEMS[this.equipment.armor]?.defense ?? 0);
   }
   get reach() {
-    return this.equipment.weapon ? 2.6 : 1.8;
+    return ITEMS[this.equipment.weapon]?.reach ?? 1.8;
+  }
+  get swingTime() {
+    return ITEMS[this.equipment.weapon]?.speed ?? 0.42;
   }
 
   equip(id) {
     const item = ITEMS[id];
-    if (item?.type === 'weapon') this.equipment.weapon = id;
+    if (item?.type === 'weapon' && id !== this.equipment.weapon) {
+      this.equipment.weapon = id;
+      this.weaponMesh?.removeFromParent();
+      this.weaponMesh = createWeapon(id);
+      this.h.handR.add(this.weaponMesh);
+    }
     if (item?.type === 'armor') this.equipment.armor = id;
-    this.sword.visible = !!this.equipment.weapon;
     this.cloak.visible = !!this.equipment.armor;
   }
 
@@ -116,6 +121,7 @@ export class Player {
   startAttack() {
     if (this.dead || this.attackTime >= 0 || this.stats.stamina < 6) return false;
     this.attackTime = 0;
+    this.attackDuration = this.swingTime;
     this.hitPending = true;
     this.stats.stamina -= 6;
     return true;

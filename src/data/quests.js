@@ -12,7 +12,7 @@ export const QUESTS = {
       { text: 'Search the grass for anything familiar', counter: 'item:torn_letter', count: 1 },
     ],
     rewards: { xp: 15 },
-    next: ['echoes'],
+    next: ['echoes', 'millbrook'],
   },
   echoes: {
     title: 'Echoes',
@@ -29,6 +29,19 @@ export const QUESTS = {
     summary: 'Every memory points to the standing stones on the north hill.',
     objectives: [{ text: 'Touch the altar within the standing stones (north)', counter: 'touch:stones', count: 1 }],
     rewards: { xp: 120 },
+  },
+  millbrook: {
+    title: 'The Village to the South',
+    summary: 'Smoke rises beyond the meadow to the south. Where there is smoke, there are people, and maybe answers.',
+    objectives: [{ text: 'Follow the dirt path south to the village', counter: 'reach:town', count: 1 }],
+    rewards: { xp: 20 },
+  },
+  petals: {
+    title: 'Petals for the Pot',
+    summary: "Tam, the innkeeper at the Fallen Star, needs moonpetals for her famous stew.",
+    turnIn: 'tam', turnInName: 'Tam',
+    objectives: [{ text: 'Gather moonpetals from the meadow', counter: 'item:herb', count: 5 }],
+    rewards: { xp: 60, take: { herb: 5 }, items: { potion: 2 } },
   },
   slimes: {
     title: 'A Sticky Situation',

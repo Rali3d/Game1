@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, isWater, WORLD_SIZE } from '../world/Terrain.js';
+import { heightAt, isWater, pathDistance, WORLD_SIZE } from '../world/Terrain.js';
 import { smoothstep } from '../engine/math.js';
 
 const VIEW = 70; // world units from centre to edge of the map
@@ -11,15 +11,16 @@ export class Minimap {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.g = game;
-    this.image = this.renderTerrain(game.world.vegetation.treePoints);
+    this.image = this.renderTerrain(game.world.vegetation.treePoints, game.world.town.footprints);
   }
 
-  renderTerrain(trees) {
+  renderTerrain(trees, buildings) {
     const c = document.createElement('canvas');
     c.width = c.height = TEX;
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(TEX, TEX);
     const low = new THREE.Color(0x4f7d35), high = new THREE.Color(0x8c8a6a), water = new THREE.Color(0x35688c);
+    const path = new THREE.Color(0x9a7d55);
     const col = new THREE.Color();
     const scale = WORLD_SIZE / TEX;
     for (let py = 0; py < TEX; py++) {
@@ -28,6 +29,7 @@ export class Minimap {
         const z = -WORLD_SIZE / 2 + (py + 0.5) * scale;
         const h = heightAt(x, z);
         if (isWater(x, z)) col.copy(water);
+        else if (pathDistance(x, z) < 1.4) col.copy(path);
         else col.copy(low).lerp(high, smoothstep(2, 30, h)).multiplyScalar(0.85 + (h % 3) / 20);
         const i = (py * TEX + px) * 4;
         img.data[i] = col.r * 255;
@@ -42,6 +44,24 @@ export class Minimap {
       ctx.beginPath();
       ctx.arc((t.x + WORLD_SIZE / 2) / scale, (t.z + WORLD_SIZE / 2) / scale, 1.1 * t.s, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // Rooftops of Millbrook
+    ctx.fillStyle = '#7a4a34';
+    ctx.strokeStyle = '#2a1a10';
+    ctx.lineWidth = 0.8;
+    for (const b of buildings) {
+      ctx.save();
+      ctx.translate((b.x + WORLD_SIZE / 2) / scale, (b.z + WORLD_SIZE / 2) / scale);
+      ctx.beginPath();
+      if (b.hw !== undefined) {
+        ctx.rotate(-b.rot);
+        ctx.rect(-b.hw / scale, -b.hd / scale, (b.hw * 2) / scale, (b.hd * 2) / scale);
+      } else {
+        ctx.arc(0, 0, b.r / scale, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     }
     return c;
   }

@@ -13,19 +13,40 @@ export const LANDMARKS = {
   pond: { x: 60, z: 40, r: 15 },
   stones: { x: -6, z: -124 },
   oak: { x: 41, z: -61 },
+  town: { x: -8, z: 72, r: 28 }, // Millbrook, a short walk south of the meadow
+  stump: { x: -19, z: 44 }, // woodcutter's axe
+  hunterCamp: { x: -98, z: 36 }, // hunter's spear, at the edge of the wolf woods
 };
+
+// Dirt paths as polylines: meadow -> Millbrook, and meadow -> Oswin's camp.
+export const PATHS = [
+  [[0, 4], [-3, 28], [-6, 50], [-8, 72]],
+  [[0, 4], [5, -4], [14, -14], [24, -26]],
+];
 
 const hills = createNoise2D(1337);
 const detail = createNoise2D(4242);
 const ridges = createNoise2D(777);
 
-// Height is a pure function of (x, z) so gameplay can query it without touching the mesh.
-export function heightAt(x, z) {
+function baseHeight(x, z) {
   const d = Math.hypot(x, z);
   const field = smoothstep(32, 120, d);
   let h = fbm(hills, x * 0.0085, z * 0.0085, 4) * 22 * field;
   h += fbm(detail, x * 0.045, z * 0.045, 2) * 0.6;
   h += smoothstep(150, 215, d) * (26 + fbm(ridges, x * 0.03, z * 0.03, 3) * 16);
+  return h;
+}
+
+export const TOWN_Y = baseHeight(LANDMARKS.town.x, LANDMARKS.town.z);
+
+// Height is a pure function of (x, z) so gameplay can query it without touching the mesh.
+export function heightAt(x, z) {
+  let h = baseHeight(x, z);
+
+  // Level ground for the village, blending out into the surrounding hills.
+  const t = LANDMARKS.town;
+  const dt = Math.hypot(x - t.x, z - t.z);
+  if (dt < t.r + 20) h = lerp(h, TOWN_Y, 1 - smoothstep(t.r - 2, t.r + 18, dt));
 
   // Flat-topped hill for the standing stones.
   const s = LANDMARKS.stones;
@@ -40,6 +61,22 @@ export function heightAt(x, z) {
   return h;
 }
 
+function segmentDistance(px, pz, ax, az, bx, bz) {
+  const vx = bx - ax, vz = bz - az;
+  const t = Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / (vx * vx + vz * vz)));
+  return Math.hypot(px - (ax + vx * t), pz - (az + vz * t));
+}
+
+export function pathDistance(x, z) {
+  let best = Infinity;
+  for (const line of PATHS) {
+    for (let i = 0; i < line.length - 1; i++) {
+      best = Math.min(best, segmentDistance(x, z, line[i][0], line[i][1], line[i + 1][0], line[i + 1][1]));
+    }
+  }
+  return best;
+}
+
 // Only the pond holds water; other low dips in the hills stay dry.
 export function isPond(x, z) {
   const p = LANDMARKS.pond;
@@ -52,7 +89,7 @@ export function isWater(x, z, margin = 0) {
 }
 
 export function createTerrainMesh() {
-  const seg = 220;
+  const seg = 260;
   const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, seg, seg);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
@@ -65,7 +102,8 @@ export function createTerrainMesh() {
   const grassA = new THREE.Color(0x4f8a34), grassB = new THREE.Color(0x7aa84a);
   const dry = new THREE.Color(0xa39f5a), rock = new THREE.Color(0x77736b);
   const sand = new THREE.Color(0xb9a77a), snow = new THREE.Color(0xe6ebee), dirt = new THREE.Color(0x6b5638);
-  const { camp, stones } = LANDMARKS;
+  const { camp, stones, town } = LANDMARKS;
+  const path = new THREE.Color(0x8a7050), cobble = new THREE.Color(0x8d8274);
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), n = nrm.getY(i);
@@ -76,6 +114,8 @@ export function createTerrainMesh() {
     c.lerp(snow, smoothstep(34, 44, y) * smoothstep(0.7, 0.85, n));
     c.lerp(dirt, (1 - smoothstep(2.5, 5, Math.hypot(x - camp.x, z - camp.z))) * 0.8);
     c.lerp(dirt, (1 - smoothstep(6, 10, Math.hypot(x - stones.x, z - stones.z))) * 0.35);
+    c.lerp(path, (1 - smoothstep(0.9, 2.0, pathDistance(x, z))) * 0.85);
+    c.lerp(cobble, 1 - smoothstep(11, 14, Math.hypot(x - town.x, z - town.z)));
     colors.set([c.r, c.g, c.b], i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));

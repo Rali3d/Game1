@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../engine/noise.js';
 import { smoothstep } from '../engine/math.js';
-import { heightAt, isWater, WORLD_RADIUS } from './Terrain.js';
+import { heightAt, isWater, pathDistance, WORLD_RADIUS } from './Terrain.js';
 
 const slopeAt = (x, z) =>
   Math.hypot(heightAt(x + 1, z) - heightAt(x - 1, z), heightAt(x, z + 1) - heightAt(x, z - 1)) / 2;
@@ -55,7 +55,7 @@ export class Vegetation {
       const density = 0.025 + smoothstep(70, 120, d) * 0.55 - smoothstep(165, 205, d) * 0.4;
       if (rng() > density) continue;
       const y = heightAt(x, z);
-      if (isWater(x, z, 0.5) || slopeAt(x, z) > 0.9 || blocked(x, z, 3)) continue;
+      if (isWater(x, z, 0.5) || slopeAt(x, z) > 0.9 || blocked(x, z, 3) || pathDistance(x, z) < 4) continue;
       const tree = { x, y, z, s: 0.8 + rng() * 0.8, r: rng() * Math.PI * 2 };
       (d > 95 && rng() < 0.75 ? pines : oaks).push(tree);
     }
@@ -108,7 +108,7 @@ export class Vegetation {
       const d = Math.hypot(x, z);
       if (d < 14 || d > WORLD_RADIUS + 15) continue;
       const density = 0.07 + smoothstep(80, 130, d) * 0.12 + smoothstep(145, 180, d) * 0.4;
-      if (rng() > density || blocked(x, z, 2) || isWater(x, z, 0.2)) continue;
+      if (rng() > density || blocked(x, z, 2) || isWater(x, z, 0.2) || pathDistance(x, z) < 2.5) continue;
       const s = (0.3 + rng() * 1.3) * (d > 150 ? 1.8 : 1);
       rocks.push({ x, z, s });
     }
@@ -139,10 +139,10 @@ export class Vegetation {
     };
     const grassSpots = [];
     for (let i = 0; i < 30000; i++) {
-      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * 105;
+      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * 110;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       const y = heightAt(x, z);
-      if (isWater(x, z, 0.25) || slopeAt(x, z) > 0.8) continue;
+      if (isWater(x, z, 0.25) || slopeAt(x, z) > 0.8 || pathDistance(x, z) < 1.2) continue;
       if (avoid.some((av) => av.grass && Math.hypot(x - av.x, z - av.z) < av.grass)) continue;
       grassSpots.push({ x, y, z });
     }
@@ -165,7 +165,8 @@ export class Vegetation {
       const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * 90;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       const y = heightAt(x, z);
-      if (isWater(x, z, 0.4)) continue;
+      if (isWater(x, z, 0.4) || pathDistance(x, z) < 1.5) continue;
+      if (avoid.some((av) => av.grass && Math.hypot(x - av.x, z - av.z) < av.grass)) continue;
       flowerSpots.push({ x, y, z });
     }
     const flowers = instanced(new THREE.SphereGeometry(0.07, 6, 4), new THREE.MeshLambertMaterial(), flowerSpots.length, { cast: false });

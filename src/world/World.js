@@ -3,15 +3,16 @@ import { createTerrainMesh, createWater, heightAt, LANDMARKS } from './Terrain.j
 import { Sky } from './Sky.js';
 import { Vegetation } from './Vegetation.js';
 import { createCampfire, createStandingStones, getGlowTexture } from './Props.js';
+import { createTown } from './Town.js';
 
 // Assembles the static world and owns collision + safe-zone queries.
 export class World {
   constructor(scene) {
     this.scene = scene;
-    this.colliders = []; // vertical cylinders: { x, z, r }
+    this.colliders = []; // circles { x, z, r } or rotated boxes { x, z, hw, hd, rot }
     this.animated = []; // anything with update(t, dt)
-    const { spawn, camp, stones, oak } = LANDMARKS;
-    this.safeZones = [{ x: camp.x, z: camp.z, r: 15 }];
+    const { spawn, camp, stones, oak, town, stump, hunterCamp } = LANDMARKS;
+    this.safeZones = [{ x: camp.x, z: camp.z, r: 15 }, { x: town.x, z: town.z, r: town.r + 6 }];
 
     scene.add(createTerrainMesh(), createWater());
     this.sky = new Sky(scene);
@@ -22,6 +23,9 @@ export class World {
       { ...camp, r: 10, grass: 3.5 },
       { ...stones, r: 15, grass: 1.5 },
       { ...oak, r: 6 },
+      { ...town, r: town.r + 6, grass: 15 },
+      { ...stump, r: 4, grass: 1.5 },
+      { ...hunterCamp, r: 6, grass: 2 },
     ];
     this.vegetation = new Vegetation(scene, this.colliders, avoid, oak);
 
@@ -29,6 +33,9 @@ export class World {
     scene.add(this.campfire.group);
     this.colliders.push({ x: camp.x, z: camp.z, r: 0.95 });
     this.animated.push(this.campfire);
+
+    this.town = createTown(scene, this.colliders, this.sky);
+    this.animated.push(this.town);
 
     this.stones = createStandingStones(stones.x, stones.z);
     scene.add(this.stones.group);
@@ -71,6 +78,10 @@ export class World {
   // Push a circle of radius r out of every collider it overlaps.
   collide(pos, r) {
     for (const c of this.colliders) {
+      if (c.hw !== undefined) {
+        this.collideBox(pos, r, c);
+        continue;
+      }
       const dx = pos.x - c.x, dz = pos.z - c.z;
       const min = r + c.r;
       const d2 = dx * dx + dz * dz;
@@ -81,6 +92,28 @@ export class World {
         pos.z += dz * push;
       }
     }
+  }
+
+  collideBox(pos, r, c) {
+    const cos = Math.cos(c.rot), sin = Math.sin(c.rot);
+    const dx = pos.x - c.x, dz = pos.z - c.z;
+    if (Math.abs(dx) > c.hw + c.hd + r || Math.abs(dz) > c.hw + c.hd + r) return; // cheap reject
+    // Into the box's local frame (inverse of a rotation about y).
+    const lx = dx * cos - dz * sin, lz = dx * sin + dz * cos;
+    const cx = Math.max(-c.hw, Math.min(c.hw, lx)), cz = Math.max(-c.hd, Math.min(c.hd, lz));
+    let px = lx - cx, pz = lz - cz;
+    const d = Math.hypot(px, pz);
+    if (d >= r) return;
+    if (d > 1e-6) {
+      px = (px / d) * (r - d);
+      pz = (pz / d) * (r - d);
+    } else {
+      // Centre is inside the box: leave through the nearest face.
+      const ex = c.hw - Math.abs(lx), ez = c.hd - Math.abs(lz);
+      if (ex < ez) { px = Math.sign(lx || 1) * (ex + r); pz = 0; } else { px = 0; pz = Math.sign(lz || 1) * (ez + r); }
+    }
+    pos.x += px * cos + pz * sin;
+    pos.z += -px * sin + pz * cos;
   }
 
   isSafe(x, z, pad = 0) {

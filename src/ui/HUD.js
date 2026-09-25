@@ -121,6 +121,18 @@ export class HUD {
     }
   }
 
+  // Big centred location title, e.g. on entering a village.
+  banner(title, subtitle = '') {
+    const el = document.getElementById('banner');
+    el.querySelector('h2').textContent = title;
+    el.querySelector('p').textContent = subtitle;
+    el.classList.add('hidden');
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.remove('hidden');
+    clearTimeout(this.bannerTimer);
+    this.bannerTimer = setTimeout(() => el.classList.add('hidden'), 4300);
+  }
+
   hurt() {
     this.vignette.classList.remove('hit');
     void this.vignette.offsetWidth; // restart the CSS animation

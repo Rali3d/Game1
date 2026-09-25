@@ -1,6 +1,7 @@
 // Dialogue trees are plain objects: node -> { text, onEnter?, options }.
 // text/options may be functions so they can react to game state. An option with next: null ends the conversation.
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const bye = { text: 'Goodbye.', next: null };
 
 export function wandererTree(g) {
   const q = g.quests;
@@ -14,6 +15,7 @@ export function wandererTree(g) {
     { text: 'Is there anything I can do for you?', next: 'slimes_offer', if: () => !q.status('slimes') },
     { text: 'Need anything else?', next: 'pelts_offer', if: () => q.isDone('slimes') && !q.status('pelts') },
     { text: 'Could you brew something from these moonpetals? (3)', next: 'brew', if: () => g.inventory.count('herb') >= 3 },
+    { text: 'Is there anywhere else nearby?', next: 'village' },
     { text: 'Where should I go now?', next: 'advice' },
     { text: 'Goodbye.', next: null },
   ];
@@ -56,6 +58,10 @@ export function wandererTree(g) {
         { text: 'Did you see anyone else?', next: 'anyone' },
         { text: "I'll look for them.", next: 'hub' },
       ],
+    },
+    village: {
+      text: "Millbrook. Follow the dirt path south from where you woke; you'll smell the bread before you see the roofs. Tam at the Fallen Star will give you a bed, and Brenna at the smithy can put something better than rust in your hand.",
+      options: hub,
     },
     anyone: {
       text: "Only the slimes, and they don't talk much. There are wolves in the pinewoods past the meadow's edge, too. Keep to the open grass until you've a blade in your hand.",
@@ -120,6 +126,116 @@ export function wandererTree(g) {
       text: "Aren. A good name for someone who fell out of the sky. Whatever's looking for you won't find you tonight. Sit. Rest. Tomorrow, the road.",
       onEnter: () => (g.flags.toldOswin = true),
       options: hub,
+    },
+  };
+}
+
+export function brennaTree(g) {
+  const hub = () => [
+    { text: 'What other stranger?', next: 'grey', if: () => !g.flags.heardGrey },
+    { text: 'That sword on your rack...', next: 'sword', if: () => g.interactions.has('rack_sword') },
+    { text: 'Where else could I find a weapon?', next: 'weapons' },
+    bye,
+  ];
+  return {
+    greet: {
+      text: () => (!g.flags.metBrenna
+        ? "Another stranger in Millbrook? That's two this week. The other one didn't buy anything either. Brenna. I make things sharp."
+        : pick(["Back again? Mind the anvil, it bites.", "Iron doesn't beat itself. What is it?", "Still got all your fingers? Good."])),
+      onEnter: () => (g.flags.metBrenna = true),
+      options: hub,
+    },
+    hub: { text: 'Anything else?', options: hub },
+    grey: {
+      text: "Tall fellow. Grey coat, grey eyes, not a speck of mud on his boots. Asked if anything had fallen out of the sky lately. I told him the only thing that falls around here is the price of iron.",
+      onEnter: () => (g.flags.heardGrey = true),
+      options: hub,
+    },
+    sword: {
+      text: "Good iron, that. I made it for a man who paid up front and never came back for it. Twelve years it's hung there. Funny thing... he had a look about him a bit like yours. Take it. It's waited long enough.",
+      onEnter: () => (g.flags.brennaOffered = true),
+      options: hub,
+    },
+    weapons: {
+      text: "There's an old woodcutter's axe stuck in a stump just off the north path. Hits like a mule, swings like one too. And there's a hunter's spear out west, at the edge of the pinewoods. The hunter never came back for it. Wolves. A spear's got reach, though.",
+      options: hub,
+    },
+  };
+}
+
+export function tamTree(g) {
+  const q = g.quests;
+  const hub = () => [
+    { text: "I've brought the moonpetals.", next: 'petals_done', if: () => q.isReady('petals') },
+    { text: 'Could I rest here?', next: 'rest' },
+    { text: 'What do you know about the stones on the hill?', next: 'stones' },
+    { text: 'Do you need help with anything?', next: 'petals_offer', if: () => !q.status('petals') },
+    { text: 'Tell me about the man in grey.', next: 'grey', if: () => g.flags.heardGrey && !g.flags.tamGrey },
+    bye,
+  ];
+  return {
+    greet: {
+      text: () => (!g.flags.metTam
+        ? "Welcome to Millbrook, traveller. I'm Tam. I keep the inn, the well, and most of the gossip. You'll be the one who fell, then. Whole village saw the light."
+        : pick(['Back at the Fallen Star! What can I do for you?', "Stew's on. It's always on.", 'You look tired. Everyone who comes through here looks tired.'])),
+      onEnter: () => (g.flags.metTam = true),
+      options: hub,
+    },
+    hub: { text: 'Anything else, love?', options: hub },
+    rest: {
+      text: "A bed's yours whenever you want it. Nobody pays at the Fallen Star, least of all someone the sky dropped on us.",
+      options: [
+        { text: 'Rest for a while. (Heal and save)', next: null, do: () => g.rest('town') },
+        { text: 'Maybe later.', next: 'hub' },
+      ],
+    },
+    stones: {
+      text: "Half the village sat up all night listening to them hum. My grandmother used to say the circle was a door. 'Doors open both ways,' she'd say. That was the part that worried her.",
+      options: hub,
+    },
+    petals_offer: {
+      text: "Moonpetals. The pale purple flowers out in the meadow. They make a stew that'll cure anything short of death, and I'm fresh out. Bring me five and I'll make it worth the walk.",
+      options: [
+        { text: "I'll find some.", next: 'hub', do: () => q.start('petals') },
+        { text: 'Not right now.', next: 'hub' },
+      ],
+    },
+    petals_done: {
+      text: "Oh, these are lovely. Here, two draughts from the cellar, and there'll be a hot bowl waiting whenever you pass through.",
+      onEnter: () => q.complete('petals'),
+      options: hub,
+    },
+    grey: {
+      text: "Stayed one night. Paid in coin nobody's seen minted in a hundred years. Left before dawn, walking north toward the stones. The dogs wouldn't go near him. Dogs know things.",
+      onEnter: () => (g.flags.tamGrey = true),
+      options: hub,
+    },
+  };
+}
+
+export function pipTree(g) {
+  const done = () => [bye];
+  return {
+    greet: {
+      text: () => (!g.flags.metPip
+        ? "Are you the one who fell out of the sky? Oswin says you did. Did it hurt? I'm Pip."
+        : pick([
+          "Did you fight any wolves yet? I'd fight a wolf.",
+          "Brenna says I'm not allowed to touch the swords. You're allowed, though.",
+          "Tam's stew is the best. Don't tell my mum.",
+          'I can hold my breath for a whole minute. Watch. ...Okay, not a whole minute.',
+        ])),
+      onEnter: () => (g.flags.metPip = true),
+      options: () => (g.flags.pipAnswered ? done() : [
+        { text: 'A little.', next: 'hurt' },
+        { text: "I don't remember.", next: 'forget' },
+      ]),
+    },
+    hurt: { text: "I KNEW it. I'm telling everyone.", onEnter: () => (g.flags.pipAnswered = true), options: done },
+    forget: {
+      text: "That's okay. I don't remember being a baby either, and Mum says I definitely was one.",
+      onEnter: () => (g.flags.pipAnswered = true),
+      options: done,
     },
   };
 }

@@ -25,6 +25,10 @@ export class Screens {
     $('#btn-resume').addEventListener('click', () => game.resume());
     $('#btn-save').addEventListener('click', () => game.save(true));
     $('#btn-respawn').addEventListener('click', () => game.respawn());
+    $('#btn-quit').addEventListener('click', () => this.showQuitConfirm(true));
+    $('#btn-quit-cancel').addEventListener('click', () => this.showQuitConfirm(false));
+    $('#btn-save-quit').addEventListener('click', () => game.quitToTitle(true));
+    $('#btn-quit-nosave').addEventListener('click', () => game.quitToTitle(false));
     this.card.addEventListener('click', () => this.closeCard());
     this.intro.addEventListener('click', () => (this.introClick = true));
     document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => this.closeMenu()));
@@ -156,7 +160,8 @@ export class Screens {
     if (it?.type === 'consumable') action = 'Use';
     if ((it?.type === 'weapon' || it?.type === 'armor') && !equipped.has(this.selected)) action = 'Equip';
     if (this.selected === 'torn_letter') action = 'Read';
-    const stat = it?.damage ? `<p class="stat">+${it.damage} attack</p>` : it?.defense ? `<p class="stat">+${it.defense} defense</p>` : it?.heal ? `<p class="stat">Restores ${it.heal} HP</p>` : '';
+    const pace = it?.speed < 0.49 ? 'quick' : it?.speed > 0.6 ? 'slow' : 'steady';
+    const stat = it?.damage ? `<p class="stat">+${it.damage} attack · ${it.reach} reach · ${pace} swing</p>` : it?.defense ? `<p class="stat">+${it.defense} defense</p>` : it?.heal ? `<p class="stat">Restores ${it.heal} HP</p>` : '';
     this.inventory.querySelector('.inv-detail').innerHTML = it
       ? `<h3>${it.icon} ${it.name}</h3><p class="type">${it.type}</p><p>${it.desc}</p>${stat}
          ${action ? `<button class="primary" data-action data-id="${this.selected}">${action}</button>` : ''}`
@@ -197,8 +202,24 @@ export class Screens {
   }
 
   // ---- Pause / death ----
-  showPause() { show(this.pause); }
+  showPause() {
+    this.showQuitConfirm(false);
+    show(this.pause);
+  }
   hidePause() { hide(this.pause); }
+
+  showQuitConfirm(on) {
+    $('#pause-main').classList.toggle('hidden', on);
+    $('#quit-confirm').classList.toggle('hidden', !on);
+    this.quitConfirmOpen = on;
+  }
+
+  // Esc on the pause screen backs out of the quit prompt first. Returns true if it did.
+  cancelQuit() {
+    if (!this.quitConfirmOpen) return false;
+    this.showQuitConfirm(false);
+    return true;
+  }
   showDeath() { show(this.death); }
   hideDeath() { hide(this.death); }
 

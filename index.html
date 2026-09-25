@@ -35,6 +35,7 @@
     </div>
     <div id="lock-hint" class="hidden">Click the view to control the camera · or drag to look</div>
   </div>
+  <div id="banner" class="hidden"><h2></h2><p></p></div>
   <div id="floaters"></div>
   <div id="vignette"></div>
   <div id="fade"></div>
@@ -109,9 +110,18 @@
   <section id="pause" class="screen dim hidden">
     <div class="panel narrow">
       <h2>Paused</h2>
-      <div class="buttons column">
+      <div class="buttons column" id="pause-main">
         <button id="btn-resume" class="primary">Resume</button>
         <button id="btn-save">Save Game</button>
+        <button id="btn-quit">Quit to Title</button>
+      </div>
+      <div id="quit-confirm" class="hidden">
+        <p>Return to the title screen? Anything since your last save will be lost.</p>
+        <div class="buttons column">
+          <button id="btn-save-quit" class="primary">Save &amp; Quit</button>
+          <button id="btn-quit-nosave">Quit Without Saving</button>
+          <button id="btn-quit-cancel">Cancel</button>
+        </div>
       </div>
       <dl class="controls">
         <dt>WASD</dt><dd>Move</dd>

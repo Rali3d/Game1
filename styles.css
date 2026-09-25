@@ -148,6 +148,21 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 #vignette.hit { animation: hit 0.5s ease-out; }
 @keyframes hit { from { opacity: 1; } to { opacity: 0; } }
 
+#banner {
+  position: fixed; left: 0; right: 0; top: 22%; text-align: center; pointer-events: none;
+  animation: banner 4.2s ease-in-out forwards;
+}
+#banner h2 {
+  font-family: var(--display); font-size: clamp(38px, 7vw, 64px); margin: 0; letter-spacing: 0.12em;
+  color: #fbf0d2; text-shadow: 0 3px 20px rgba(0, 0, 0, 0.8);
+}
+#banner p { font-size: 20px; font-style: italic; margin: 4px 0 0; color: var(--ink); text-shadow: 0 2px 8px #000; }
+@keyframes banner {
+  0% { opacity: 0; transform: translateY(8px); }
+  15%, 75% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+
 #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.6s; }
 #fade.on { opacity: 1; }
 
@@ -230,7 +245,7 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .panel h3 { font-family: var(--display); font-size: 17px; color: var(--ink); margin: 0 0 10px; }
 .panel .close { padding: 4px 10px; }
 .panel .hint, .hint { color: var(--ink-faint); font-size: 14px; margin-top: 14px; }
-.panel .controls { margin-top: 18px; }
+.panel .controls { margin-top: 18px; grid-template-columns: auto 1fr; max-width: none; }
 .empty { color: var(--ink-faint); font-style: italic; }
 
 .inv-layout { display: grid; grid-template-columns: 1fr 280px; gap: 20px; }
@@ -262,6 +277,8 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .journal-body summary { cursor: pointer; font-family: var(--display); color: var(--memory); }
 .journal-body details p { font-size: 16px; line-height: 1.45; }
 .done-list { color: var(--ink-faint); margin: 0; padding-left: 18px; }
+
+#quit-confirm p { font-size: 18px; color: var(--ink-dim); margin: 0 0 14px; }
 
 #death h2 { color: #e0705f; }
 #death p { font-size: 18px; font-style: italic; color: var(--ink-dim); }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp, lerp, easeIn, easeOut } from '../engine/math.js';
+import { ITEMS } from '../data/items.js';
 
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
@@ -96,15 +97,29 @@ export function animateHumanoid(h, { phase, amount, attack = -1, t }) {
   }
 }
 
-export function createSword() {
+// Builds a held weapon from its item definition. The grip sits at the origin and the weapon points
+// along +z, so in a hanging hand it points forward.
+export function createWeapon(itemId) {
+  const it = ITEMS[itemId] ?? {};
   const g = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: 0xa39a8c, roughness: 0.45, metalness: 0.7 });
-  const rust = mat(0x6d4a33, { roughness: 0.9 });
-  g.add(part(box(0.05, 0.05, 0.24), mat(0x3b2616), 0, 0, 0));
-  g.add(part(box(0.28, 0.05, 0.06), rust, 0, 0, 0.14));
-  g.add(part(box(0.065, 0.018, 0.9), metal, 0, 0, 0.62));
-  const tip = new THREE.ConeGeometry(0.046, 0.14, 4).rotateX(Math.PI / 2).scale(1.4, 0.35, 1);
-  g.add(part(tip, metal, 0, 0, 1.14));
+  const metal = new THREE.MeshStandardMaterial({ color: it.metal ?? 0xa39a8c, roughness: 0.4, metalness: 0.75 });
+  const wood = mat(0x5e4128);
+  if (it.model === 'axe') {
+    g.add(part(new THREE.CylinderGeometry(0.032, 0.038, 1.05, 6).rotateX(Math.PI / 2), wood, 0, 0, 0.35));
+    g.add(part(box(0.06, 0.3, 0.24), metal, 0, 0.15, 0.74));
+    g.add(part(box(0.035, 0.07, 0.34), mat(0xd6d8da, { metalness: 0.8, roughness: 0.3 }), 0, 0.31, 0.74)); // edge
+  } else if (it.model === 'spear') {
+    g.add(part(new THREE.CylinderGeometry(0.026, 0.03, 2.1, 6).rotateX(Math.PI / 2), wood, 0, 0, 0.3));
+    g.add(part(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 6).rotateX(Math.PI / 2), mat(0x3b2a1a), 0, 0, 1.33));
+    g.add(part(new THREE.ConeGeometry(0.075, 0.36, 4).rotateX(Math.PI / 2).scale(1, 0.4, 1), metal, 0, 0, 1.56));
+  } else {
+    const len = it.bladeLength ?? 0.9;
+    g.add(part(box(0.05, 0.05, 0.24), mat(0x3b2616), 0, 0, 0));
+    g.add(part(box(0.28, 0.05, 0.06), mat(it.guard ?? 0x6d4a33, { metalness: 0.4 }), 0, 0, 0.14));
+    g.add(part(box(0.065, 0.018, len), metal, 0, 0, 0.17 + len / 2));
+    const tip = new THREE.ConeGeometry(0.046, 0.14, 4).rotateX(Math.PI / 2).scale(1.4, 0.35, 1);
+    g.add(part(tip, metal, 0, 0, 0.24 + len));
+  }
   g.rotation.x = 0.35;
   return g;
 }

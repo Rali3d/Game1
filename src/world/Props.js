@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from './Terrain.js';
-import { createSword } from '../entities/Humanoid.js';
+import { createWeapon } from '../entities/Humanoid.js';
 
 let glowTexture;
 export function getGlowTexture() {
@@ -47,6 +47,8 @@ function mesh(geo, material, x = 0, y = 0, z = 0) {
   m.receiveShadow = true;
   return m;
 }
+
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 
 function grounded(group, x, z) {
   group.position.set(x, heightAt(x, z), z);
@@ -214,18 +216,62 @@ export function createLetter(x, z) {
   };
 }
 
-export function createSwordInGround(x, z) {
+// A weapon lying in the world, waiting to be picked up. pose: 'ground' | 'stump' | 'lean' | 'rack'.
+export function createWeaponPickup(x, z, itemId, pose = 'ground', rotY = 0) {
   const g = grounded(new THREE.Group(), x, z);
-  const sword = createSword();
-  sword.rotation.set(Math.PI / 2, 0, 0.18);
-  sword.position.y = 0.78;
+  g.rotation.y = rotY;
+  const weapon = createWeapon(itemId);
+  let glowY = 0.9;
+
+  if (pose === 'ground') {
+    weapon.rotation.set(Math.PI / 2, 0, 0.18); // blade down, planted in the earth
+    weapon.position.y = 0.78;
+  } else if (pose === 'stump') {
+    const wood = std(0x5a4130);
+    g.add(mesh(new THREE.CylinderGeometry(0.45, 0.55, 0.6, 10), wood, 0, 0.3, 0));
+    g.add(mesh(new THREE.CircleGeometry(0.45, 10).rotateX(-Math.PI / 2), std(0xb89a6a), 0, 0.605, 0));
+    for (let i = 0; i < 5; i++) {
+      const log = mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.2, 7), wood, 1.3, 0.16 + (i > 2 ? 0.3 : 0), -0.4 + (i % 3) * 0.34 + (i > 2 ? 0.17 : 0));
+      log.rotation.z = Math.PI / 2;
+      g.add(log);
+    }
+    weapon.rotation.set(Math.PI / 2 - 0.25, 0, 0); // head buried in the stump top
+    weapon.position.set(0, 1.25, -0.15);
+    glowY = 1.2;
+  } else if (pose === 'lean') {
+    const rock = mesh(new THREE.DodecahedronGeometry(0.75, 0), std(0x7b766d, { flatShading: true }), 0, 0.35, 0.75);
+    rock.scale.set(1, 0.9, 0.8);
+    g.add(rock);
+    // An abandoned hunter's camp: a collapsed tent and a cold fire ring.
+    const tent = mesh(new THREE.ConeGeometry(1.3, 1.6, 4, 1, true), std(0x8a7a5a, { side: THREE.DoubleSide }), -2.6, 0.55, 0.6);
+    tent.rotation.set(0.35, 0.6, 0.2);
+    g.add(tent);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      g.add(mesh(new THREE.DodecahedronGeometry(0.16, 0), std(0x3d3a36), -1.2 + Math.cos(a) * 0.5, 0.06, -1.6 + Math.sin(a) * 0.5));
+    }
+    weapon.rotation.set(-(Math.PI / 2 - 0.35), 0, 0); // shaft leaning back against the rock
+    weapon.position.set(0, 0.7, 0);
+    glowY = 1.4;
+  } else if (pose === 'rack') {
+    const wood = std(0x6b4a2e);
+    g.add(mesh(box(0.1, 1.5, 0.1), wood, -0.45, 0.75, 0), mesh(box(0.1, 1.5, 0.1), wood, 0.45, 0.75, 0));
+    g.add(mesh(box(1.1, 0.08, 0.14), wood, 0, 1.35, 0), mesh(box(1.1, 0.08, 0.14), wood, 0, 0.3, 0));
+    weapon.rotation.set(-Math.PI / 2, 0, 0); // hung point-up on the rack
+    weapon.position.set(0, 0.45, 0.1);
+    glowY = 1.0;
+  }
+
   const glow = glowSprite(0xffe2a8, 1.3, 0.5);
-  glow.position.y = 0.9;
-  g.add(sword, glow);
+  glow.position.y = glowY;
+  g.add(weapon, glow);
   return {
     group: g,
+    // Only the weapon disappears when taken; the stump, rock or rack stays.
+    weapon,
+    glow,
     update(t) {
-      glow.material.opacity = 0.3 + Math.sin(t * 2.4) * 0.2;
+      glow.material.opacity = 0.3 + Math.sin(t * 2.4 + x) * 0.2;
     },
   };
 }
