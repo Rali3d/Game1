@@ -40,7 +40,7 @@ export const TOWNS = [
     logs: [[8, -6], [-10, 8]],
   },
   {
-    id: 'greywatch', name: 'Greywatch', subtitle: 'The garrison that watches the northern hills',
+    id: 'greywatch', name: 'Greywatch', subtitle: 'The garrison that watches the northern hills', style: 'brick',
     x: -95, z: -105, r: 26, entrance: -12,
     walls: [0x9a968c, 0x8c887e, 0xa8a398], roofs: [0x4a5058, 0x3f454c, 0x555a60],
     buildings: [

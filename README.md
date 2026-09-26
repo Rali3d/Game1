@@ -12,7 +12,17 @@ The game loads ES modules, so it has to be served over HTTP. Opening `index.html
 python3 serve.py
 ```
 
-Then open <http://localhost:5173>. `serve.py` is a tiny server that tells the browser not to cache, so code changes always show up on reload. `python3 -m http.server 5173` or any other static server also works. three.js is loaded from the jsDelivr CDN, so the first load needs an internet connection.
+Then open <http://localhost:5173>. `serve.py` is a tiny server that makes the browser check for changed files on every load, so code changes always show up. Any static file server works. three.js is loaded from the jsDelivr CDN, so the first load needs an internet connection.
+
+## Art
+
+The characters, animations, buildings, trees and props are by [Quaternius](https://quaternius.com) (CC0). See [`assets/CREDITS.md`](assets/CREDITS.md).
+
+- `assets/` holds only the models the game uses, with game-sized textures. It's about 47 MB, loaded behind a progress bar at startup.
+- The raw packs go in `models/`, which is not in git (they're about 1 GB). If you add or change packs, rebuild `assets/` from them:
+  ```bash
+  python3 tools/build_assets.py
+  ```
 
 ## Controls
 
@@ -35,7 +45,8 @@ Then open <http://localhost:5173>. `serve.py` is a tiny server that tells the br
 
 ## What's in it
 
-- **Character creation and save slots:** choose a name, body type, skin tone, hairstyle, hair colour, tunic and beard. Your name stays hidden (`???`) until the standing stones give it back to you. Three save slots; *Load Game* on the title screen lists them.
+- **Characters:** animated Quaternius characters for the player, townsfolk and the undead, with walk, jog, sprint, swim, jump, sword combos, spell casting, hits, death, talking, and getting up from the grass.
+- **Character creation and save slots:** choose a name, body type, outfit (Peasant or Ranger), skin tone, hairstyle, hair colour, dye, beard and hood. Your name stays hidden (`???`) until the standing stones give it back to you. Three save slots; *Load Game* on the title screen lists them.
 - **World:** a procedurally generated valley (seeded, so it's the same every load) with a central meadow, rolling hills, a pond, pine woods and a mountain ring, all connected by dirt roads. There are thousands of instanced trees, rocks, flowers and wind-animated grass tufts.
 - **Four towns:**
   - **Millbrook:** the Fallen Star inn and a smithy.
@@ -66,13 +77,16 @@ Then open <http://localhost:5173>. `serve.py` is a tiny server that tells the br
 ```
 index.html            HUD/menu markup and the three.js import map
 styles.css            All UI styling
-serve.py              No-cache local dev server
+serve.py              Local dev server
+assets/               The Quaternius models the game uses (built by tools/build_assets.py)
+tools/                build_assets.py: copies and downsizes models from models/ into assets/
+models/               The raw Quaternius packs (not in git)
 src/
   main.js             Boots the game
   Game.js             Orchestrator: modes, spaces (world/interiors/caves), interactions, combat, save/load
-  engine/             Renderer + loop, input, event bus, math and noise helpers
+  engine/             Renderer + loop, asset loader, input, event bus, math and noise helpers
   world/              Terrain, sky, vegetation, props, Town builder, Interior, Cave, World
-  entities/           Humanoid rig (bodies, hair, weapons, capes), Player, Enemy (incl. boss), NPC
+  entities/           CharacterModel (animated Quaternius characters), Gear (weapons, cape, lantern), Player, Enemy, NPC
   systems/            Camera, quests, inventory, spawner, spells, interactions, save slots
   ui/                 HUD, minimap, world map, dialogue box, shop, character creator, overlay screens
   data/               Items, shops, towns, caves, NPCs, quests, dialogue and story text

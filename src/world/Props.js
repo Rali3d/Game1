@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from './Terrain.js';
-import { createWeapon } from '../entities/Humanoid.js';
+import { createWeapon } from '../entities/Gear.js';
 
 let glowTexture;
 export function getGlowTexture() {

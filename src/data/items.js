@@ -1,6 +1,6 @@
 // type: key | weapon | armor | consumable | material | tool | tome
 // value: price in coins at a shop (merchants buy things back for less). No value = can't be sold.
-// Weapons: damage adds to attack, reach is the swing range, speed is seconds per swing.
+// Weapons: damage adds to attack, reach is the swing range, speed is seconds per swing, tint colours the model.
 // Armour: defense, plus visual 'cape' (shows a cape) or 'body' (tints the tunic), with a tint colour.
 export const ITEMS = {
   // ---- Story and keys ----
@@ -20,22 +20,22 @@ export const ITEMS = {
   // ---- Weapons ----
   rusty_sword: {
     name: 'Rusty Sword', icon: '🗡️', type: 'weapon', model: 'sword', damage: 7, reach: 2.6, speed: 0.5, value: 10,
-    metal: 0xa39a8c, guard: 0x6d4a33,
+    metal: 0xa39a8c, guard: 0x6d4a33, tint: 0x9a7a64,
     desc: 'Pitted with rust, but the edge still bites. It was waiting for you.',
   },
   iron_sword: {
     name: 'Iron Sword', icon: '⚔️', type: 'weapon', model: 'sword', damage: 13, reach: 2.7, speed: 0.46, value: 60,
-    metal: 0xd4d8dc, guard: 0xb08d3a, bladeLength: 1.0,
+    metal: 0xd4d8dc, guard: 0xb08d3a, bladeLength: 1.0, tint: 0xc9c9c9,
     desc: 'Good Millbrook iron, forged twelve years ago for a man who never came back for it.',
   },
   steel_sword: {
     name: 'Steel Longsword', icon: '⚔️', type: 'weapon', model: 'sword', damage: 19, reach: 2.9, speed: 0.46, value: 160,
-    metal: 0xe8ecf0, guard: 0x3a3a44, bladeLength: 1.15,
+    metal: 0xe8ecf0, guard: 0x3a3a44, bladeLength: 1.15, tint: 0xe6eeff,
     desc: "Brenna's best work. Balanced so well it feels lighter than it is.",
   },
   woodcutters_axe: {
     name: "Woodcutter's Axe", icon: '🪓', type: 'weapon', model: 'axe', damage: 17, reach: 2.4, speed: 0.66, value: 45,
-    metal: 0x7d7f82,
+    metal: 0x7d7f82, tint: 0xb4a894,
     desc: 'Heavy and slow, but it splits more than logs.',
   },
   battle_axe: {

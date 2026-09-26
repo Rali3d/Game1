@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { createHumanoid, animateHumanoid, createCape } from './Humanoid.js';
+import { CharacterModel } from './CharacterModel.js';
+import { createCape, createWeapon, GRIP_R } from './Gear.js';
 import { damp, dampAngle, angleDiff, clamp, rand } from '../engine/math.js';
 import { glowSprite } from '../world/Props.js';
 
@@ -22,29 +23,27 @@ function markerSprite() {
   return s;
 }
 
+const UP = new THREE.Vector3(0, 1, 0);
+const tmpQ = new THREE.Quaternion();
+const tmpV = new THREE.Vector3();
+
 // A townsperson or traveller. Options:
-//   look: humanoid appearance { gender, skin, shirt, pants, hair, hairStyle, beard }
-//   cloak (colour), apron (colour), staff (lantern staff), scale
+//   look: appearance { gender, outfit, skin, hair, hairStyle, beard, dye }
+//   cloak (colour), staff (lantern staff), scale, idle (animation name for standing about)
 //   wander: radius to stroll around the spawn point (otherwise the NPC stands still)
 // `space` is where they live: the outdoor world or a building interior.
 export class NPC {
   constructor(scene, x, z, facing, opts = {}, space) {
     this.space = space;
-    const h = (this.h = createHumanoid({ ...opts.look, beard: opts.beard ?? opts.look?.beard }));
+    this.model = new CharacterModel({ ...opts.look, beard: opts.beard ?? opts.look?.beard });
+    const m = this.model;
     if (opts.cloak) {
-      h.cape = createCape(opts.cloak);
-      h.torso.add(h.cape);
-    }
-    if (opts.apron) {
-      const apron = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.85, 0.04),
-        new THREE.MeshStandardMaterial({ color: opts.apron, roughness: 0.95 }));
-      apron.position.set(0, 0.05, 0.18);
-      apron.castShadow = true;
-      h.torso.add(apron);
+      const cape = createCape(opts.cloak);
+      m.bones.spine_03.add(cape);
     }
     if (opts.staff) this.addStaff();
 
-    this.mesh = h.root;
+    this.mesh = m.root;
     this.mesh.scale.setScalar(opts.scale ?? 1);
     this.mesh.position.set(x, space.groundAt(x, z), z);
     this.position = this.mesh.position;
@@ -53,34 +52,31 @@ export class NPC {
     this.facing = facing;
     this.mesh.rotation.y = facing;
     this.wander = opts.wander ?? 0;
+    this.idleAnim = opts.idle ?? 'idle';
     this.target = this.home.clone();
     this.wait = rand(1, 4);
-    this.walkPhase = 0;
-    this.moveAmount = 0;
+    this.speedNow = 0;
+    this.headYaw = 0;
     this.talking = false;
     // A collider that moves with the NPC so the player can't walk through them.
-    this.collider = { x, z, r: 0.45 * (opts.scale ?? 1) };
+    this.collider = { x, z, r: 0.42 * (opts.scale ?? 1) };
+    m.loop(this.idleAnim, { fade: 0 });
+    m.mixer.setTime(Math.random() * 3); // so a crowd isn't breathing in unison
 
     this.marker = markerSprite();
-    this.marker.position.y = 2.45;
+    this.marker.position.y = 2.3;
     this.mesh.add(this.marker);
     scene.add(this.mesh);
   }
 
   addStaff() {
-    const staff = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 2.0, 6),
-      new THREE.MeshStandardMaterial({ color: 0x5a3f28, roughness: 0.9 }));
-    pole.castShadow = true;
-    const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 0.14),
-      new THREE.MeshStandardMaterial({ color: 0xffd98a, emissive: 0xffb347, emissiveIntensity: 1.5 }));
-    lantern.position.y = 1.02;
-    const glow = glowSprite(0xffc46b, 1.2, 0.7);
-    glow.position.y = 1.02;
-    staff.add(pole, lantern, glow);
-    staff.position.set(0, 0.45, 0.05);
-    this.h.handL.add(staff);
-    this.hasStaff = true;
+    const staff = createWeapon('ember_staff');
+    staff.rotation.copy(GRIP_R);
+    staff.position.set(0, 0, -0.35); // held a third of the way up the shaft
+    const glow = glowSprite(0xffc46b, 1.0, 0.7);
+    glow.position.set(0, 0, 1.45);
+    staff.add(glow);
+    this.model.handR.add(staff);
   }
 
   setMarker(visible) {
@@ -102,7 +98,7 @@ export class NPC {
         const a = rand(0, Math.PI * 2), r = rand(0, this.wander);
         this.target.set(this.home.x + Math.cos(a) * r, 0, this.home.z + Math.sin(a) * r);
       } else {
-        speed = 1.4;
+        speed = 1.3;
         this.facing = dampAngle(this.facing, Math.atan2(tx, tz), 6, dt);
         this.position.x += (tx / td) * speed * dt;
         this.position.z += (tz / td) * speed * dt;
@@ -119,14 +115,18 @@ export class NPC {
     this.collider.z = this.position.z;
     this.mesh.rotation.y = this.facing;
 
-    // Follow the player with their eyes when nearby.
-    const look = dist < 9 ? clamp(angleDiff(this.facing, toPlayer), -1.1, 1.1) : 0;
-    this.h.head.rotation.y = dampAngle(this.h.head.rotation.y, look, 5, dt);
+    this.speedNow = damp(this.speedNow, speed, 8, dt);
+    if (this.talking) this.model.loop('talk');
+    else this.model.locomote(this.speedNow, this.idleAnim);
+    this.model.update(dt);
 
-    this.moveAmount = damp(this.moveAmount, speed / 3, 8, dt);
-    this.walkPhase += dt * speed * 2.6;
-    animateHumanoid(this.h, { phase: this.walkPhase, amount: this.moveAmount, t });
-    if (this.hasStaff) this.h.armL.rotation.x = -0.35; // holding the staff out front
-    this.marker.position.y = 2.45 + Math.sin(t * 3) * 0.08;
+    // Follow the player with their eyes when nearby: turn the head bone about the world's up axis.
+    const look = dist < 9 ? clamp(angleDiff(this.facing, toPlayer), -1.0, 1.0) : 0;
+    this.headYaw = dampAngle(this.headYaw, look, 5, dt);
+    const head = this.model.head;
+    head.parent.getWorldQuaternion(tmpQ).invert();
+    head.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(tmpV.copy(UP).applyQuaternion(tmpQ), this.headYaw));
+
+    this.marker.position.y = 2.3 + Math.sin(t * 3) * 0.08;
   }
 }

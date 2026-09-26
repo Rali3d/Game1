@@ -148,6 +148,15 @@ export class HUD {
     }
   }
 
+  // A short message in the middle of the screen, for things the player tried that didn't work.
+  notice(text) {
+    const el = document.getElementById('notice');
+    el.textContent = text;
+    el.classList.remove('show');
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add('show');
+  }
+
   // Big centred location title, e.g. on entering a village.
   banner(title, subtitle = '') {
     const el = document.getElementById('banner');

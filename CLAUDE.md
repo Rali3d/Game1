@@ -9,7 +9,7 @@ python3 serve.py   # from this folder: no-cache server on http://localhost:5173
 ```
 
 - three.js comes from the jsDelivr CDN through the import map in `index.html`. Keep it pinned (currently 0.170.0).
-- **Use `serve.py`, not `python3 -m http.server`, while developing.** The plain server lets the browser cache modules heuristically, so edits sometimes don't show up after a reload. `serve.py` also handles parallel requests; the plain server occasionally resets connections mid-load, which leaves `window.game` pointing at the `#game` div.
+- **Use `serve.py`, not `python3 -m http.server`, while developing.** The plain server lets the browser cache modules heuristically, so edits sometimes don't show up after a reload. It also has a 5-connection backlog and resets connections while the models load; `serve.py` uses a large backlog and `no-cache`. If a load fails, `window.game` points at the `#game` div.
 - **Preview pane:** the preview launcher can't read `~/Documents` (a macOS privacy block; python fails in `os.getcwd()`). Start the server with Bash `run_in_background`, then `preview_start` with a `launch.json` entry that only has `"url": "http://localhost:5173"`.
 - **The hidden preview pane barely runs animation frames** (~2 fps) and screenshots are often a frame or two stale (take a second screenshot if it looks wrong). Drive the game from `javascript_tool` instead: the running game is `window.game`, and this steps it by hand:
   ```js
@@ -19,6 +19,16 @@ python3 serve.py   # from this folder: no-cache server on http://localhost:5173
   Never `await requestAnimationFrame` in the pane; it can hang until timeout. Story cards ignore input for 450 ms of real time, and doors and rest use a ~1 s fade, so wait with `setTimeout`.
   Don't call `location.reload()` and keep using the page in the same script; reload in one call and test in the next.
 - Pointer lock doesn't work reliably in the pane. When the game loses pointer lock it pauses on purpose; call `game.resume()`.
+
+## Art assets (Quaternius)
+
+- The raw packs live in `models/` (gitignored, 1 GB). `python3 tools/build_assets.py` rebuilds `assets/` from them: it copies the chosen glTFs, shrinks colour textures with `sips`, and drops normal and roughness maps. `assets/manifest.json` lists what the game loads.
+- The Bestiary pack (Puglin, Imp) is under the Quaternius Asset License: usable in the game, but never commit its raw files. The other packs are CC0.
+- `engine/Assets.js` loads everything before `Game` starts. Get models with `Assets.clone('props/Barrel')`, instancing data with `Assets.meshParts(key)`, and animations with `Assets.clip(name)`. It turns on `THREE.Cache` and shares one Texture per image; keep both, or shared texture sheets get fetched and uploaded dozens of times.
+- **Characters** (`entities/CharacterModel.js`): an outfit glTF plus the base body (only head and neck are drawn; the rest is discarded in a shader by bind-pose position) plus hair and beard. All are re-skinned onto the outfit's skeleton, and all share the UAL skeleton. `ANIMS` maps game names to UAL clip names. `loop()` sets the locomotion loop and `once()` plays one-shots that take over and hand back. Head and chest bones are aligned with the character (x right, y up, z forward). Weapons point +z from the grip and sit in `handR` with `GRIP_R`.
+- **Don't dispose geometry of cloned characters or kit models**: it's shared with the loaded assets. Dispose only materials, which `CharacterModel.dispose()` does.
+- The nature kit stores wind data in vertex colours; `Assets` turns vertex colours off for `nature/*`. The kit bushes borrow the green broadleaf leaves.
+- Village pieces are 2 m wide and 3.12 m tall. Roofs are `Roof_RoundTiles_<span>x<length>`, and some aren't centred on their origin, so `kit(..., centre=true)` centres them from their bounding box. Each building is merged into one mesh per material (`mergeByMaterial`) to keep draw calls down.
 
 ## Architecture in one breath
 
@@ -43,7 +53,7 @@ Content is data in `src/data/*`: `items`, `shops`, `towns` (towns and caves), `n
 
 ## Story canon
 
-- The player chooses a name, body type (masculine or feminine) and look at the start. The name shows as `???` until the standing stones reveal it (end of Chapter I). Use "they" or second person for the player in text; don't assume a gender.
+- The player chooses a name, body type (masculine or feminine), outfit and look at the start. The name shows as `???` until the standing stones reveal it (end of Chapter I). Use "they" or second person for the player in text; don't assume a gender.
 - **Chapter I:** wake in the meadow, find three memory shards (the first also brings back fire magic), meet **Oswin** at the campfire northeast of the spawn point, and touch the altar in the standing stones.
 - **Chapter II:** the man in grey.
   - Tam gives you his old tower-stamped coin.

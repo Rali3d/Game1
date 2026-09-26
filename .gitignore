@@ -1,2 +1,4 @@
 .DS_Store
 .claude/
+# Raw Quaternius packs (1 GB). tools/build_assets.py copies what the game uses into assets/.
+models/

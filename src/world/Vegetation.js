@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../engine/noise.js';
 import { smoothstep } from '../engine/math.js';
 import { heightAt, isWater, pathDistance, WORLD_RADIUS } from './Terrain.js';
+import { Assets } from '../engine/Assets.js';
 
 const slopeAt = (x, z) =>
   Math.hypot(heightAt(x + 1, z) - heightAt(x - 1, z), heightAt(x, z + 1) - heightAt(x, z - 1)) / 2;
@@ -35,7 +36,48 @@ function grassTuftGeometry(rng) {
   return geo;
 }
 
-// Trees, rocks, grass and flowers, all instanced so thousands of them cost only a few draw calls.
+// The kit's bushes share the twisted tree's autumn-red leaves; in a green meadow they read better green.
+let greenLeaves = null;
+function bushLeaves(model, material) {
+  if (!model.startsWith('Bush') || material.name !== 'Leaves_TwistedTree') return material;
+  if (!greenLeaves) {
+    const src = Assets.meshParts('nature/CommonTree_1').find((p) => /Leaves/.test(p.material.name));
+    greenLeaves = material.clone();
+    greenLeaves.map = src?.material.map ?? material.map;
+  }
+  return greenLeaves;
+}
+
+// Place many copies of kit models cheaply: one InstancedMesh per (model part, map chunk). Chunking lets
+// the renderer skip trees that are off-screen (and outside the shadow camera) instead of drawing all of them.
+const CHUNK = 110;
+function scatter(scene, items, { cast }) {
+  const groups = new Map();
+  for (const it of items) {
+    const key = `${it.model}|${Math.floor(it.x / CHUNK)},${Math.floor(it.z / CHUNK)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  }
+  const dummy = new THREE.Object3D();
+  for (const [key, list] of groups) {
+    const model = key.split('|')[0];
+    if (!Assets.has(`nature/${model}`)) continue;
+    for (const { geometry, material } of Assets.meshParts(`nature/${model}`)) {
+      const mesh = instanced(geometry, bushLeaves(model, material), list.length, { cast, receive: true });
+      list.forEach((it, i) => {
+        dummy.position.set(it.x, it.y, it.z);
+        dummy.rotation.set(0, it.r, 0);
+        dummy.scale.setScalar(it.s);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      });
+      mesh.computeBoundingSphere();
+      scene.add(mesh);
+    }
+  }
+}
+
+// Trees, rocks, undergrowth, grass and flowers, all instanced so thousands of them cost only a few draw calls.
 export class Vegetation {
   constructor(scene, colliders, avoid, landmarkOak) {
     this.uniforms = { uTime: { value: 0 } };
@@ -45,61 +87,32 @@ export class Vegetation {
     const color = new THREE.Color();
     const blocked = (x, z, pad = 0) => avoid.some((a) => Math.hypot(x - a.x, z - a.z) < a.r + pad);
 
-    // ---- Trees ----
-    const pines = [], oaks = [];
-    oaks.push({ x: landmarkOak.x, z: landmarkOak.z, y: heightAt(landmarkOak.x, landmarkOak.z), s: 1.9, r: 0.4 });
+    // ---- Trees: Quaternius nature kit models, scattered and instanced ----
+    const trees = [];
+    trees.push({ x: landmarkOak.x, z: landmarkOak.z, model: 'CommonTree_2', s: 1.35, r: 0.4 });
     for (let i = 0; i < 2600; i++) {
       const x = (rng() * 2 - 1) * WORLD_RADIUS, z = (rng() * 2 - 1) * WORLD_RADIUS;
       const d = Math.hypot(x, z);
       if (d > WORLD_RADIUS + 12 || d < 22) continue;
-      const density = 0.025 + smoothstep(70, 120, d) * 0.55 - smoothstep(165, 205, d) * 0.4;
+      const density = 0.025 + smoothstep(70, 120, d) * 0.5 - smoothstep(165, 205, d) * 0.4;
       if (rng() > density) continue;
-      const y = heightAt(x, z);
       if (isWater(x, z, 0.5) || slopeAt(x, z) > 0.9 || blocked(x, z, 3) || pathDistance(x, z) < 4) continue;
-      const tree = { x, y, z, s: 0.8 + rng() * 0.8, r: rng() * Math.PI * 2 };
-      (d > 95 && rng() < 0.75 ? pines : oaks).push(tree);
+      // Broadleaf trees in the meadow, pines in the woods, a few gnarled and dead ones in the high hills.
+      const roll = rng();
+      let model, s;
+      if (d > 150 && roll < 0.12) { model = `DeadTree_${1 + Math.floor(rng() * 2)}`; s = 0.5 + rng() * 0.15; }
+      else if (d > 110 && roll < 0.16) { model = `TwistedTree_${1 + Math.floor(rng() * 2)}`; s = 0.45 + rng() * 0.12; }
+      else if (d > 95 && roll < 0.8) { model = `Pine_${1 + Math.floor(rng() * 5)}`; s = 0.8 + rng() * 0.45; }
+      else { model = `CommonTree_${1 + Math.floor(rng() * 5)}`; s = 0.7 + rng() * 0.4; }
+      trees.push({ x, z, model, s, r: rng() * Math.PI * 2 });
     }
-
-    const trunkGeo = new THREE.CylinderGeometry(0.16, 0.27, 2.4, 6).translate(0, 1.2, 0);
-    const coneGeo = new THREE.ConeGeometry(1.5, 2.6, 7).translate(0, 1.3, 0);
-    const blobGeo = new THREE.IcosahedronGeometry(1.6, 1);
-    const flatMat = () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true });
-
-    const trunks = instanced(trunkGeo, flatMat(), pines.length + oaks.length);
-    const cones = instanced(coneGeo, flatMat(), pines.length * 3);
-    const blobs = instanced(blobGeo, flatMat(), oaks.length * 2);
-    let ti = 0, ci = 0, bi = 0;
-    const place = (mesh, idx, x, y, z, sx, sy, sz, ry) => {
-      dummy.position.set(x, y, z);
-      dummy.rotation.set(0, ry, 0);
-      dummy.scale.set(sx, sy, sz);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(idx, dummy.matrix);
-    };
-
-    for (const t of [...pines, ...oaks]) {
-      place(trunks, ti, t.x, t.y - 0.1, t.z, t.s, t.s, t.s, t.r);
-      trunks.setColorAt(ti++, color.setHSL(0.07, 0.35, 0.2 + rng() * 0.08));
-      colliders.push({ x: t.x, z: t.z, r: 0.42 * t.s });
-      this.treePoints.push(t);
+    for (const t of trees) {
+      t.y = heightAt(t.x, t.z) - 0.15;
+      colliders.push({ x: t.x, z: t.z, r: (t.model.startsWith('Twisted') ? 0.9 : 0.45) * Math.max(1, t.s) });
+      this.treePoints.push({ x: t.x, z: t.z, s: t.s * 1.2 });
     }
-    for (const t of pines) {
-      const layers = [[1.3, 1], [2.5, 0.78], [3.5, 0.55]];
-      color.setHSL(0.33 + rng() * 0.05, 0.42, 0.2 + rng() * 0.08);
-      for (const [ly, ls] of layers) {
-        place(cones, ci, t.x, t.y + ly * t.s, t.z, t.s * ls, t.s * ls, t.s * ls, t.r);
-        cones.setColorAt(ci++, color);
-      }
-    }
-    for (const t of oaks) {
-      color.setHSL(0.24 + rng() * 0.06, 0.5, 0.28 + rng() * 0.1);
-      place(blobs, bi, t.x, t.y + 3.4 * t.s, t.z, 1.25 * t.s, t.s, 1.25 * t.s, t.r);
-      blobs.setColorAt(bi++, color);
-      const ox = Math.cos(t.r) * 0.8 * t.s, oz = Math.sin(t.r) * 0.8 * t.s;
-      place(blobs, bi, t.x + ox, t.y + 2.8 * t.s, t.z + oz, 0.8 * t.s, 0.75 * t.s, 0.8 * t.s, t.r + 1);
-      blobs.setColorAt(bi++, color.offsetHSL(0, 0, 0.04));
-    }
-    scene.add(trunks, cones, blobs);
+    scatter(scene, trees, { cast: true });
+    this.swayLeaves(trees);
 
     // ---- Rocks ----
     const rocks = [];
@@ -109,20 +122,30 @@ export class Vegetation {
       if (d < 14 || d > WORLD_RADIUS + 15) continue;
       const density = 0.07 + smoothstep(80, 130, d) * 0.12 + smoothstep(145, 180, d) * 0.4;
       if (rng() > density || blocked(x, z, 2) || isWater(x, z, 0.2) || pathDistance(x, z) < 2.5) continue;
-      const s = (0.3 + rng() * 1.3) * (d > 150 ? 1.8 : 1);
-      rocks.push({ x, z, s });
+      const s = (0.2 + rng() * 0.55) * (d > 150 ? 1.8 : 1);
+      rocks.push({ x, z, y: heightAt(x, z) - s * 0.3, s, r: rng() * Math.PI * 2, model: `Rock_Medium_${1 + Math.floor(rng() * 3)}` });
+      if (s > 0.3) colliders.push({ x, z, r: s * 1.4 });
     }
-    const rockMesh = instanced(new THREE.DodecahedronGeometry(1, 0), flatMat(), rocks.length);
-    rocks.forEach((r, i) => {
-      dummy.position.set(r.x, heightAt(r.x, r.z) - r.s * 0.25, r.z);
-      dummy.rotation.set(rng() * 3, rng() * 3, rng() * 3);
-      dummy.scale.set(r.s * (0.8 + rng() * 0.5), r.s * (0.5 + rng() * 0.4), r.s * (0.8 + rng() * 0.5));
-      dummy.updateMatrix();
-      rockMesh.setMatrixAt(i, dummy.matrix);
-      rockMesh.setColorAt(i, color.setHSL(0.08, 0.05, 0.36 + rng() * 0.16));
-      if (r.s > 0.55) colliders.push({ x: r.x, z: r.z, r: r.s * 0.9 });
-    });
-    scene.add(rockMesh);
+    scatter(scene, rocks, { cast: true });
+
+    // ---- Undergrowth: bushes, ferns, flower clumps, mushrooms and pebbles ----
+    const small = [];
+    const kinds = [
+      ['Bush_Common', 0.55, 0.3], ['Bush_Common_Flowers', 0.55, 0.3], ['Fern_1', 0.12, 0.05],
+      ['Flower_3_Group', 0.35, 0.15], ['Flower_4_Group', 0.3, 0.15], ['Mushroom_Common', 0.7, 0.3],
+      ['Plant_1', 0.7, 0.3], ['Pebble_Round_1', 1.2, 0.5], ['Pebble_Round_3', 1.2, 0.5],
+    ];
+    for (let i = 0; i < 2200; i++) {
+      const a = rng() * Math.PI * 2, r = 12 + Math.sqrt(rng()) * 170;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (isWater(x, z, 0.3) || slopeAt(x, z) > 0.8 || pathDistance(x, z) < 1.6 || blocked(x, z, 1)) continue;
+      // Ferns and mushrooms like the woods; flowers like the open meadow.
+      const [model, base, jitter] = kinds[Math.floor(rng() * kinds.length)];
+      if ((model.startsWith('Fern') || model.startsWith('Mushroom')) && r < 90 && rng() < 0.7) continue;
+      if (model.startsWith('Flower') && r > 120 && rng() < 0.7) continue;
+      small.push({ x, z, y: heightAt(x, z) - 0.05, s: base + rng() * jitter, r: rng() * Math.PI * 2, model });
+    }
+    scatter(scene, small, { cast: false });
 
     // ---- Grass (wind-animated in the vertex shader) ----
     const grassMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
@@ -179,6 +202,34 @@ export class Vegetation {
       flowers.setColorAt(i, color.setHex(palette[Math.floor(rng() * palette.length)]));
     });
     scene.add(flowers);
+  }
+
+  // A gentle sway in the leaves, done in the vertex shader of the kit's leaf materials.
+  swayLeaves(trees) {
+    const done = new Set();
+    for (const model of new Set(trees.map((t) => t.model))) {
+      if (!Assets.has(`nature/${model}`)) continue;
+      for (const { material } of Assets.meshParts(`nature/${model}`)) {
+        if (done.has(material) || !/Leaves|Leaf/i.test(material.name)) continue;
+        done.add(material);
+        material.onBeforeCompile = (shader) => {
+          shader.uniforms.uTime = this.uniforms.uTime;
+          shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `#include <begin_vertex>
+            #ifdef USE_INSTANCING
+              vec3 iPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+            #else
+              vec3 iPos = vec3(0.0);
+            #endif
+            float sway = sin(uTime * 1.3 + iPos.x * 0.21 + iPos.z * 0.17) * 0.04 * max(position.y - 2.0, 0.0);
+            transformed.x += sway;
+            transformed.z += sway * 0.6;`
+          );
+        };
+        material.needsUpdate = true;
+      }
+    }
   }
 
   update(t) {

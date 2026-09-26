@@ -9,11 +9,25 @@
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <script type="importmap">
-    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
   </script>
 </head>
 <body>
   <div id="game"></div>
+
+  <!-- Shown while the 3D models load -->
+  <section id="loading" class="screen">
+    <div class="loading-card">
+      <h1>Fieldborn</h1>
+      <div class="bar"><div class="fill"></div></div>
+      <p class="what">Loading</p>
+    </div>
+  </section>
 
   <!-- In-game HUD -->
   <div id="hud" class="hidden">
@@ -43,6 +57,7 @@
     <div id="lock-hint" class="hidden">Click the view to control the camera · or drag to look</div>
   </div>
   <div id="banner" class="hidden"><h2></h2><p></p></div>
+  <div id="notice"></div>
   <div id="floaters"></div>
   <div id="vignette"></div>
   <div id="fade"></div>
@@ -85,11 +100,13 @@
       <p class="hint creator-note">You won't remember your name until later. Choose it now anyway.</p>
       <label class="field"><span>Name</span><input id="creator-name" maxlength="16" placeholder="Aren" autocomplete="off" spellcheck="false" /></label>
       <div class="field"><span>Body</span><div class="opts" id="creator-body"></div></div>
+      <div class="field"><span>Outfit</span><div class="opts" id="creator-outfit"></div></div>
       <div class="field"><span>Skin</span><div class="opts" id="creator-skin"></div></div>
       <div class="field"><span>Hair</span><div class="opts" id="creator-style"></div></div>
       <div class="field"><span>Hair colour</span><div class="opts" id="creator-hair"></div></div>
-      <div class="field"><span>Tunic</span><div class="opts" id="creator-outfit"></div></div>
+      <div class="field"><span>Dye</span><div class="opts" id="creator-dye"></div></div>
       <div class="field"><span>Beard</span><div class="opts" id="creator-beard"></div></div>
+      <div class="field" id="creator-hood-row"><span>Hood</span><div class="opts" id="creator-hood"></div></div>
       <div class="buttons">
         <button id="creator-back">Back</button>
         <button id="creator-random">Randomise</button>

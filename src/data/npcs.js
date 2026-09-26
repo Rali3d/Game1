@@ -9,13 +9,13 @@ const bye = { text: 'Goodbye.', next: null };
 export const NPCS = {
   oswin: {
     tree: wandererTree, questGiver: 'wanderer',
-    opts: { look: { skin: 0xd9a883, shirt: 0x566070, pants: 0x4a3b2c, hair: 0xcfcfcf, beard: true }, cloak: 0x3f4d38, staff: true },
+    opts: { look: { outfit: 'ranger', hood: true, skin: 0xd9a883, shirt: 0x7a8a6a, hair: 0xcfcfcf, beard: true }, staff: true },
     name: (g) => (g.flags.knowsName ? 'Oswin' : 'the stranger'),
     outdoor: 'camp',
   },
   brenna: {
     tree: brennaTree, shop: 'brenna',
-    opts: { look: { gender: 'female', skin: 0xc98f6a, shirt: 0x7a4a33, pants: 0x3b3029, hair: 0x9a3b1c, hairStyle: 'ponytail' }, apron: 0x4a3322 },
+    opts: { look: { gender: 'female', skin: 0xc98f6a, shirt: 0x7a4a33, hair: 0x9a3b1c, hairStyle: 'ponytail' }, idle: 'foldArms' },
     name: (g) => (g.flags.metBrenna ? 'Brenna' : 'the blacksmith'),
     outdoor: 'smithy',
   },
@@ -51,7 +51,7 @@ export const NPCS = {
   },
   hale: {
     tree: haleTree, questGiver: 'hale',
-    opts: { look: { skin: 0xd9a883, shirt: 0x7a1f22, pants: 0x3a3a3c, hair: 0x6a6a6a, hairStyle: 'short', beard: true }, cloak: 0x7a1f22 },
+    opts: { look: { outfit: 'ranger', skin: 0xd9a883, shirt: 0x9a3f42, hair: 0x6a6a6a, hairStyle: 'buzzed', beard: true }, cloak: 0x7a1f22, idle: 'foldArms' },
     name: (g) => (g.flags.met_hale ? 'Captain Hale' : 'the captain'),
   },
   sera: {
@@ -64,7 +64,7 @@ export const NPCS = {
       ],
     }),
     shop: 'sera',
-    opts: { look: { gender: 'female', skin: 0xe0b18c, shirt: 0x5a5f66, pants: 0x3a3a3c, hair: 0x2b1d14, hairStyle: 'short' }, apron: 0x3a2a1a },
+    opts: { look: { gender: 'female', outfit: 'ranger', skin: 0xe0b18c, shirt: 0x8a8f96, hair: 0x2b1d14, hairStyle: 'buns' } },
     name: (g) => (g.flags.met_sera ? 'Sera' : 'the armorer'),
   },
   bram: {
@@ -83,7 +83,7 @@ export const NPCS = {
       'Quiet night last night. Too quiet. The Vault\'s been humming.',
       "Move along, citizen. Or don't. I'm not your mother.",
     ]),
-    opts: { look: { skin: 0xd9a883, shirt: 0x7a1f22, pants: 0x3a3a3c, hair: 0x3a2a1a }, cloak: 0x5a1a1c },
+    opts: { look: { outfit: 'ranger', skin: 0xd9a883, shirt: 0x9a3f42, hair: 0x3a2a1a, hairStyle: 'buzzed' }, cloak: 0x5a1a1c },
     name: () => 'the gate guard',
     outdoor: { town: 'greywatch', x: 20, z: -9 },
   },
@@ -93,7 +93,7 @@ export const NPCS = {
       "Buy me a stew and I'll write you a verse. Something heroic. Rhymes with 'amnesia'... give me time.",
       "Thornbury's the best town in the valley. I say that in every town.",
     ]),
-    opts: { look: { skin: 0xf0c49e, shirt: 0x3f7a5a, pants: 0x6b3f3a, hair: 0xd9b36a, hairStyle: 'long' }, cloak: 0x3f5a8a, wander: 6 },
+    opts: { look: { outfit: 'ranger', skin: 0xf0c49e, shirt: 0x5aa07a, hair: 0xd9b36a, hairStyle: 'long' }, cloak: 0x3f5a8a, wander: 6 },
     name: () => 'the minstrel',
     outdoor: { town: 'thornbury', x: 3, z: 4 },
   },

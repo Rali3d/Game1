@@ -1,13 +1,13 @@
 import { DEFAULT_APPEARANCE } from '../entities/Player.js';
-import { HAIR_STYLES } from '../entities/Humanoid.js';
+import { HAIR_STYLES, HAIR_NAMES, OUTFITS, SKIN_TONES } from '../entities/CharacterModel.js';
 
 const $ = (s) => document.querySelector(s);
 const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 
-const SKINS = [0xf2d3b3, 0xe0b18c, 0xc98f6a, 0xa8704a, 0x8a5a3a, 0x5e3a24];
-const HAIR_COLOURS = [0x1a1410, 0x2b1d14, 0x6b4a2a, 0xa8743a, 0xd9b36a, 0x9a3b1c, 0xcfcfcf, 0x3a4a6a];
-const OUTFITS = [0x8a7a62, 0x566070, 0x6b3f3a, 0x3f5a3a, 0x4a3f6b, 0x7a6a3a];
-const STYLE_NAMES = { short: 'Short', long: 'Long', ponytail: 'Ponytail', curly: 'Curly', shaved: 'Shaved' };
+const HAIR_COLOURS = [0x1a1410, 0x3a2a1a, 0x6b4a2a, 0xa8743a, 0xe0c080, 0x9a3b1c, 0xd8d8d8, 0x3a4a6a];
+// Dyes are blended gently over the painted cloth, so white means "as painted".
+const DYES = [0xffffff, 0x5a7ab0, 0xb04a3a, 0x4a8a4a, 0x7a5ab0, 0xc0a040];
+const OUTFIT_NAMES = { peasant: 'Peasant', ranger: 'Ranger' };
 const DEFAULT_NAME = 'Aren';
 
 // Character creation: pick a name and a look. The player's model updates live as options change,
@@ -21,7 +21,7 @@ export class CharacterCreator {
       const b = e.target.closest('[data-opt]');
       if (!b) return;
       const { opt, val } = b.dataset;
-      this.app[opt] = opt === 'gender' || opt === 'hairStyle' ? val : opt === 'beard' ? val === 'true' : Number(val);
+      this.app[opt] = ['gender', 'hairStyle', 'outfit'].includes(opt) ? val : opt === 'beard' || opt === 'hood' ? val === 'true' : Number(val);
       this.apply();
     });
     $('#creator-begin').addEventListener('click', () => this.finish());
@@ -53,8 +53,8 @@ export class CharacterCreator {
     const any = (arr) => arr[Math.floor(Math.random() * arr.length)];
     this.app = {
       ...this.app,
-      gender: any(['male', 'female']), skin: any(SKINS), hair: any(HAIR_COLOURS),
-      hairStyle: any(HAIR_STYLES), shirt: any(OUTFITS), beard: Math.random() < 0.25,
+      gender: any(['male', 'female']), outfit: any(OUTFITS), skin: any(SKIN_TONES), hair: any(HAIR_COLOURS),
+      hairStyle: any(HAIR_STYLES), dye: any(DYES), beard: Math.random() < 0.25,
     };
     this.apply();
   }
@@ -80,10 +80,14 @@ export class CharacterCreator {
       choice('gender', 'male', 'Masculine', a.gender === 'male'),
       choice('gender', 'female', 'Feminine', a.gender === 'female'),
     ].join('');
-    $('#creator-skin').innerHTML = SKINS.map((c) => swatch('skin', c)).join('');
-    $('#creator-style').innerHTML = HAIR_STYLES.map((s) => choice('hairStyle', s, STYLE_NAMES[s], a.hairStyle === s)).join('');
+    $('#creator-outfit').innerHTML = OUTFITS.map((o) => choice('outfit', o, OUTFIT_NAMES[o], a.outfit === o)).join('');
+    $('#creator-skin').innerHTML = SKIN_TONES.map((c) => swatch('skin', c)).join('');
+    $('#creator-style').innerHTML = HAIR_STYLES.map((st) => choice('hairStyle', st, HAIR_NAMES[st], a.hairStyle === st)).join('');
     $('#creator-hair').innerHTML = HAIR_COLOURS.map((c) => swatch('hair', c)).join('');
-    $('#creator-outfit').innerHTML = OUTFITS.map((c) => swatch('shirt', c)).join('');
+    $('#creator-dye').innerHTML = DYES.map((c) => swatch('dye', c)).join('');
     $('#creator-beard').innerHTML = [choice('beard', 'false', 'None', !a.beard), choice('beard', 'true', 'Beard', a.beard)].join('');
+    // Only the ranger outfit has a hood.
+    $('#creator-hood-row').classList.toggle('hidden', a.outfit !== 'ranger');
+    $('#creator-hood').innerHTML = [choice('hood', 'false', 'Down', !a.hood), choice('hood', 'true', 'Up', a.hood)].join('');
   }
 }

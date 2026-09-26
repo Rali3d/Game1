@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { damp, dampAngle, rand } from '../engine/math.js';
 import { events } from '../engine/EventBus.js';
-import { createHumanoid, animateHumanoid, createWeapon, createCape } from './Humanoid.js';
+import { CharacterModel } from './CharacterModel.js';
+import { createWeapon, createCape, GRIP_R } from './Gear.js';
 
 export const ENEMY_TYPES = {
   slime: {
@@ -156,35 +157,52 @@ export class Enemy {
     return g;
   }
 
+  // The restless dead: pale, ragged, shambling, with cold glowing eyes and an old sword.
   buildSkeleton() {
-    const bone = 0xd8d0bc;
-    this.h = createHumanoid({ skin: bone, shirt: 0xcfc6b0, pants: 0xcfc6b0, hair: bone, hairStyle: 'shaved', boots: 0xa89f8a, belt: 0x3a2a1a });
-    const socket = new THREE.MeshBasicMaterial({ color: 0x7fe0ff });
-    for (const x of [-0.08, 0.08]) {
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.02), socket);
-      eye.position.set(x, 0.3, 0.19);
-      this.h.head.add(eye);
+    const m = (this.model = new CharacterModel({
+      gender: Math.random() < 0.5 ? 'male' : 'female', outfit: 'peasant', skin: 0x9aa89a, hair: 0x6a6a60,
+      hairStyle: Math.random() < 0.5 ? 'bald' : 'long', dye: 0x5a5a50,
+    }));
+    const eyes = new THREE.MeshBasicMaterial({ color: 0x7fe0ff });
+    for (const x of [-0.035, 0.035]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 4), eyes);
+      eye.position.set(x, 0.1, 0.1); // in front of the eyes, in head-bone space (y up, z forward)
+      m.head.add(eye);
     }
-    this.h.handR.add(createWeapon('rusty_sword'));
-    this.materials = [this.h.materials.shirt, this.h.materials.skin, this.h.materials.pants];
-    this.barHeight = 2.3;
-    this.walkPhase = 0;
-    return this.h.root;
+    const sword = createWeapon('rusty_sword');
+    sword.rotation.copy(GRIP_R);
+    m.handR.add(sword);
+    this.materials = m.materials;
+    this.barHeight = 2.2;
+    this.idleAnim = 'zombieIdle';
+    this.walkAnim = 'zombieWalk';
+    this.attackAnim = 'zombieAttack';
+    m.loop('zombieIdle', { fade: 0 });
+    m.mixer.setTime(Math.random() * 3);
+    return m.root;
   }
 
+  // Corvin: tall, grey-cloaked, grey-bearded, with a staff that throws pale orbs.
   buildWarden() {
-    this.h = createHumanoid({ skin: 0xd6c2b0, shirt: 0x5d6168, pants: 0x3a3c40, hair: 0x9a9da3, hairStyle: 'long', beard: true });
-    this.h.cape = createCape(0x6f7378);
-    this.h.torso.add(this.h.cape);
-    this.h.handR.add(createWeapon('ember_staff'));
-    this.materials = [this.h.materials.shirt, this.h.materials.skin];
-    this.barHeight = 2.4;
-    this.walkPhase = 0;
+    const m = (this.model = new CharacterModel({
+      gender: 'male', outfit: 'ranger', skin: 0xe8d2c2, hair: 0x9a9da3, hairStyle: 'long', beard: true, dye: 0x6f7378,
+    }));
+    const cape = createCape(0x6f7378);
+    m.bones.spine_03.add(cape);
+    const staff = createWeapon('ember_staff');
+    staff.rotation.copy(GRIP_R);
+    staff.position.set(0, 0, -0.35);
+    m.handR.add(staff);
+    this.materials = m.materials;
+    this.barHeight = 2.3;
+    this.idleAnim = 'idle';
+    this.walkAnim = null; // regular locomotion
+    this.attackAnim = 'attack';
     this.blinkT = 0;
     this.orbCd = 3;
     this.hitsSinceBlink = 0;
-    this.mesh = this.h.root;
-    return this.h.root;
+    m.loop('idle', { fade: 0 });
+    return m.root;
   }
 
   buildHealthBar() {
@@ -224,7 +242,9 @@ export class Enemy {
   dispose() {
     this.mesh.removeFromParent();
     this.bar?.removeFromParent();
-    for (const root of [this.mesh, this.bar]) {
+    // Character models share geometry with the loaded assets, so only their own materials are freed.
+    this.model?.dispose();
+    for (const root of [this.model ? null : this.mesh, this.bar]) {
       root?.traverse((o) => {
         o.geometry?.dispose();
         o.material?.dispose?.();
@@ -261,8 +281,22 @@ export class Enemy {
   update(dt, player, camera, night, spells) {
     const d = this.def, pos = this.position, space = this.space;
     if (!this.alive) {
-      if (d.boss) return; // the boss's defeat is a scripted scene
+      if (d.boss) {
+        this.model.update(dt); // the boss's defeat is a scripted scene; keep him animating
+        return;
+      }
       this.deathT += dt;
+      if (this.model) {
+        // Characters fall over, lie still a moment, then sink away.
+        if (!this.deathStarted) {
+          this.deathStarted = true;
+          this.model.once('death', { hold: true });
+        }
+        this.model.update(dt);
+        if (this.deathT > 1.8) this.position.y -= dt * 0.8;
+        if (this.deathT > 2.6) this.dispose();
+        return;
+      }
       const k = Math.max(0.01, 1 - this.deathT * 1.6);
       this.mesh.scale.set(this.size * (1 + (1 - k) * 0.4), this.size * k, this.size * (1 + (1 - k) * 0.4));
       if (this.deathT > 0.65) this.dispose();
@@ -386,12 +420,16 @@ export class Enemy {
       this.wings[1].rotation.z = -flap;
     } else {
       pos.y = ground;
-      this.walkPhase += dt * this.speedNow * 2.2;
-      const attack = this.windup >= 0 ? (this.windup / d.windup) * 0.45 : this.lunge > 0 ? 0.45 + (0.2 - this.lunge) * 2.7 : -1;
-      animateHumanoid(this.h, {
-        phase: this.walkPhase, amount: Math.min(1, this.speedNow / 3), attack,
-        cast: this.castAnim > 0 ? 1 - this.castAnim / 0.4 : -1, t: this.phase,
-      });
+      const m = this.model;
+      // Start the swing as the wind-up begins, timed so the blow lands when the damage does.
+      if (this.windup >= 0 && !this.swinging) {
+        this.swinging = true;
+        m.once(this.attackAnim, { duration: d.windup + 0.4, onDone: () => (this.swinging = false) });
+      }
+      if (this.castAnim > 0.35 && !m.busy) m.once('cast', { duration: 0.6 });
+      if (this.walkAnim) m.loop(this.speedNow > 0.3 ? this.walkAnim : this.idleAnim, { speed: this.speedNow > 0.3 ? this.speedNow / 1.6 : 1 });
+      else m.locomote(this.speedNow);
+      m.update(dt);
     }
   }
 }

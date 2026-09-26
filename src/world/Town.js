@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { heightAt } from './Terrain.js';
 import { glowSprite } from './Props.js';
+import { Assets } from '../engine/Assets.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Builds a town from its data (see data/towns.js). Everything is laid out in town-local coordinates
 // (origin = the square, -z = north) and converted to world space for colliders, doors and NPC spots.
@@ -143,6 +145,121 @@ function buildTower(M, b) {
   return { group: g, doorX: 0, flag };
 }
 
+// ---------------------------------------------------------------- kit buildings
+// Buildings assembled from the Quaternius Medieval Village kit: 2 m wall panels on a grid, a door panel in
+// the middle of the front (+z) wall, window panels, corner posts, a tiled roof and gable ends.
+const KIT_WALL = 2, STOREY = 3.12;
+const ROOF_SIZES = ['4x4', '4x6', '4x8', '6x4', '6x6', '6x8', '6x10', '6x12', '6x14', '8x8', '8x10', '8x12', '8x14'];
+export const kitReady = () => Assets.has('village/Wall_Plaster_Straight');
+
+// Place a kit piece, optionally centring its bounding box on the given point (some pieces aren't centred).
+function kit(group, key, x, y, z, ry = 0, centre = false) {
+  const m = Assets.clone(`village/${key}`);
+  m.rotation.y = ry;
+  m.position.set(x, y, z);
+  if (centre) {
+    const box = new THREE.Box3().setFromObject(Assets.gltf(`village/${key}`).scene);
+    const c = box.getCenter(new THREE.Vector3()).applyAxisAngle(new THREE.Vector3(0, 1, 0), ry);
+    m.position.x -= c.x;
+    m.position.z -= c.z;
+  }
+  group.add(m);
+  return m;
+}
+
+// Bake a building made of dozens of kit pieces into one mesh per material (a handful of draw calls).
+function mergeByMaterial(group) {
+  group.updateMatrixWorld(true);
+  const byMat = new Map();
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+    for (const name of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
+    if (!geo.index) geo.setIndex([...Array(geo.attributes.position.count).keys()]);
+    if (!byMat.has(o.material)) byMat.set(o.material, []);
+    byMat.get(o.material).push(geo);
+  });
+  const out = new THREE.Group();
+  for (const [material, geos] of byMat) {
+    const merged = mergeGeometries(geos, false);
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.castShadow = mesh.receiveShadow = true;
+    out.add(mesh);
+    geos.forEach((gg) => gg.dispose());
+  }
+  return out;
+}
+
+function buildModular(b, style) {
+  const g = new THREE.Group();
+  const brick = style === 'brick' || b.kind === 'chapel' || b.kind === 'tower';
+  const wall = brick ? 'UnevenBrick' : 'Plaster';
+  const even = (v, lo, hi) => Math.max(lo, Math.min(hi, 2 * Math.round(v / 2)));
+  const W = b.kind === 'tower' ? 4 : even(b.w, 4, 10);
+  const D = b.kind === 'tower' ? 4 : even(b.d, 4, 8);
+  const storeys = b.kind === 'tower' ? 3 : b.h > 3.8 ? 2 : 1;
+  const nx = W / KIT_WALL, nz = D / KIT_WALL;
+  const doorCell = Math.floor(nx / 2);
+  const doorPiece = b.kind === 'chapel' || brick ? `Wall_${wall}_Door_Round` : `Wall_${wall}_Door_Flat`;
+  const windowPiece = (i) => (brick ? `Wall_${wall}_Window_Thin_Round` : i % 2 ? `Wall_${wall}_Window_Wide_Flat` : `Wall_${wall}_Window_Wide_Round`);
+  const windowFrame = (piece) => (/Thin_Round/.test(piece) ? 'Window_Thin_Round1' : /Wide_Round/.test(piece) ? 'Window_Wide_Round1' : 'Window_Wide_Flat1');
+
+  for (let s = 0; s < storeys; s++) {
+    const y = s * STOREY;
+    for (let i = 0; i < nx; i++) {
+      const x = -W / 2 + KIT_WALL / 2 + i * KIT_WALL;
+      // Front: door on the ground floor, windows elsewhere. Back: mostly plain.
+      if (s === 0 && i === doorCell) {
+        kit(g, doorPiece, x, y, D / 2, 0);
+        kit(g, /Round/.test(doorPiece) ? 'Door_1_Round' : 'Door_1_Flat', x - 0.56, y, D / 2, 0);
+      } else {
+        const piece = windowPiece(i + s);
+        kit(g, piece, x, y, D / 2, 0);
+        kit(g, windowFrame(piece), x, y, D / 2, 0);
+      }
+      kit(g, i % 2 && s > 0 ? windowPiece(i) : `Wall_${wall}_Straight`, x, y, -D / 2, Math.PI);
+    }
+    for (let j = 0; j < nz; j++) {
+      const z = -D / 2 + KIT_WALL / 2 + j * KIT_WALL;
+      const side = (j + s) % 2 === 0 ? windowPiece(j) : `Wall_${wall}_Straight`;
+      kit(g, side, W / 2, y, z, Math.PI / 2);
+      if (side !== `Wall_${wall}_Straight`) kit(g, windowFrame(side), W / 2, y, z, Math.PI / 2);
+      kit(g, `Wall_${wall}_Straight`, -W / 2, y, z, -Math.PI / 2);
+    }
+    for (const [cx, cz] of [[W / 2, D / 2], [-W / 2, D / 2], [W / 2, -D / 2], [-W / 2, -D / 2]]) {
+      kit(g, brick ? 'Corner_Exterior_Brick' : 'Corner_Exterior_Wood', cx, y, cz);
+    }
+  }
+
+  const top = storeys * STOREY;
+  if (b.kind === 'tower') {
+    kit(g, 'Roof_Tower_RoundTiles', 0, top, 0, 0, true);
+  } else {
+    // The ridge runs along the longer side; the gable ends close the triangles under it.
+    const alongX = W >= D;
+    const span = alongX ? D : W, length = alongX ? W : D;
+    const size = ROOF_SIZES.includes(`${span}x${length}`) ? `${span}x${length}` : alongX ? `${span}x${Math.min(length, 14)}` : '6x6';
+    kit(g, `Roof_RoundTiles_${size}`, 0, top, 0, alongX ? Math.PI / 2 : 0, true);
+    const gable = `Roof_Front_Brick${Math.min(span, 8)}`;
+    if (alongX) {
+      kit(g, gable, W / 2, top, 0, Math.PI / 2, true);
+      kit(g, gable, -W / 2, top, 0, -Math.PI / 2, true);
+    } else {
+      kit(g, gable, 0, top, D / 2, 0, true);
+      kit(g, gable, 0, top, -D / 2, Math.PI, true);
+    }
+    if (b.kind !== 'chapel') kit(g, 'Prop_Chimney', W * 0.25, top - 0.4, -D * 0.2);
+  }
+
+  if (b.sign) {
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(3.2, W * 0.55), 0.7), signMaterial(b.sign, { font: 58 }));
+    board.position.set(-W / 2 + KIT_WALL / 2 + doorCell * KIT_WALL, 2.75, D / 2 + 0.2);
+    g.add(board);
+  }
+  return { group: mergeByMaterial(g), doorX: -W / 2 + KIT_WALL / 2 + doorCell * KIT_WALL, w: W, d: D };
+}
+
 function buildWindmill(M, b, roofMat) {
   const g = new THREE.Group();
   mesh(new THREE.CylinderGeometry(1.6, 2.4, 8, 8), std(0xe0d4ba, { flatShading: true }), 0, 4, 0, g);
@@ -173,8 +290,18 @@ function buildShed(M, b, roofMat, kind) {
     mesh(box(1.7, 1.1, 1.3), M.stone, -1.3, 0.55, -1.0, g);
     mesh(box(0.8, 3.0, 0.8), M.stone, -1.3, 2.2, -1.35, g);
     mesh(box(1.3, 0.05, 0.9), new THREE.MeshBasicMaterial({ color: 0xff6a1a }), -1.3, 1.12, -0.95, g).castShadow = false;
-    mesh(box(0.34, 0.5, 0.34), M.metal, 0.7, 0.25, 0.5, g);
-    mesh(box(0.8, 0.22, 0.34), M.metal, 0.7, 0.6, 0.5, g);
+    if (Assets.has('props/Anvil_Log')) {
+      const anvil = Assets.clone('props/Anvil_Log');
+      anvil.position.set(0.7, 0, 0.5);
+      g.add(anvil);
+      const bench = Assets.clone('props/Workbench');
+      bench.position.set(1.4, 0, -1.3);
+      bench.scale.setScalar(0.8);
+      g.add(bench);
+    } else {
+      mesh(box(0.34, 0.5, 0.34), M.metal, 0.7, 0.25, 0.5, g);
+      mesh(box(0.8, 0.22, 0.34), M.metal, 0.7, 0.6, 0.5, g);
+    }
     mesh(new THREE.CylinderGeometry(0.35, 0.3, 0.6, 10), M.darkWood, -0.2, 0.3, 1.2, g);
     const glow = glowSprite(0xff7a2a, 2.2, 0.8);
     glow.position.set(-1.3, 1.4, -0.95);
@@ -246,6 +373,14 @@ export function createTown(scene, colliders, sky, T) {
 
   const doors = [];
   const spots = {};
+  // The kit's window glass is one shared material; it glows warmly after dark.
+  let kitGlass = null;
+  if (kitReady()) {
+    Assets.gltf('village/Window_Wide_Flat1').scene.traverse((o) => {
+      if (o.isMesh && /Glass/.test(o.material.name)) kitGlass = o.material;
+    });
+    kitGlass?.emissive.setHex(0xffbe5c);
+  }
   const spinners = [];
   let flag = null;
 
@@ -279,19 +414,30 @@ export function createTown(scene, colliders, sky, T) {
     }
 
     let built;
-    if (b.kind === 'chapel') built = buildChapel(M, { ...b, wall, roof });
+    if (b.kind === 'windmill') built = buildWindmill(M, b, roofs[roofs.length - 1]);
+    else if (kitReady()) built = buildModular(b, T.style);
+    else if (b.kind === 'chapel') built = buildChapel(M, { ...b, wall, roof });
     else if (b.kind === 'tower') built = buildTower(M, b);
-    else if (b.kind === 'windmill') built = buildWindmill(M, b, roofs[roofs.length - 1]);
     else built = buildHouse(M, { ...b, wall, roof });
     place(built.group, at.x, at.z, at.ry);
     if (built.blades) spinners.push(built.blades);
     if (built.flag) flag = built.flag;
+    const bw = built.w ?? b.w, bd = built.d ?? b.d;
 
     if (b.kind === 'windmill') addCircle(at.x, at.z, 2.5, true);
-    else addBox(at.x, at.z, (b.w + 0.3) / 2, (b.d + 0.3) / 2, at.ry);
+    else addBox(at.x, at.z, bw / 2 + 0.25, bd / 2 + 0.25, at.ry);
+
+    // A barrel or crate by the front corner of most buildings.
+    if (b.kind !== 'windmill' && kitReady() && (i * 7) % 3 !== 0) {
+      const key = ['Barrel', 'Crate_Wooden', 'Barrel_Apples', 'FarmCrate_Apple'][(i + T.id.length) % 4];
+      const spot = local(bw / 2 - 0.5, bd / 2 + 0.7);
+      const prop = Assets.clone(`props/${key}`);
+      place(prop, spot.x, spot.z, at.ry + i);
+      addCircle(spot.x, spot.z, 0.45);
+    }
 
     // The door: a point just outside the front face, facing away from the building.
-    const frontZ = b.kind === 'windmill' ? 2.4 : b.d / 2 + 0.15;
+    const frontZ = b.kind === 'windmill' ? 2.4 : bd / 2 + 0.15;
     const outside = local(built.doorX, frontZ + 1.1);
     doors.push({
       interiorId: `${T.id}:${i}`,
@@ -405,6 +551,13 @@ export function createTown(scene, colliders, sky, T) {
     addBox(lx, lz, 0.8, 1.2, lx * 0.3, false);
   }
   for (const [lx, lz] of T.dummies ?? []) {
+    if (Assets.has('props/Dummy')) {
+      const dummy = Assets.clone('props/Dummy');
+      dummy.scale.setScalar(1.05);
+      place(dummy, lx, lz, lx);
+      addCircle(lx, lz, 0.4);
+      continue;
+    }
     const d = new THREE.Group();
     mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.9, 6), M.darkWood, 0, 0.95, 0, d);
     mesh(box(1.1, 0.08, 0.08), M.darkWood, 0, 1.45, 0, d);
@@ -464,6 +617,7 @@ export function createTown(scene, colliders, sky, T) {
     update(t) {
       const night = 1 - sky.daylight;
       M.window.emissiveIntensity = 0.15 + night * 1.8;
+      if (kitGlass) kitGlass.emissiveIntensity = 0.1 + night * 1.6;
       M.stained.emissiveIntensity = 0.3 + night * 0.8;
       lampGlows.forEach((gl) => (gl.material.opacity = night * 0.9));
       plazaLight.intensity = night * 35;

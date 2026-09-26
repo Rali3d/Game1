@@ -109,7 +109,7 @@ export class Game {
 
     const { spawn } = LANDMARKS;
     this.player.position.set(spawn.x, heightAt(spawn.x, spawn.z), spawn.z);
-    this.player.getUp = 0;
+    this.player.lie();
     this.player.update(0, this.input, 0, this.world, false);
 
     this.mode = 'title';
@@ -297,6 +297,19 @@ export class Game {
 
     this.canvas.addEventListener('click', () => {
       if (this.mode === 'play' && !this.input.pointerLocked) this.tryLock();
+    });
+    // Hotbar slots do the same as their keys when clicked.
+    document.getElementById('hotbar').addEventListener('click', (e) => {
+      const slot = e.target.closest('.slot');
+      if (!slot || this.mode !== 'play') return;
+      const actions = {
+        'slot-heal': () => this.quickHeal(),
+        'slot-fire': () => this.spells.castFireball(),
+        'slot-lantern': () => this.toggleLantern(),
+        'slot-tent': () => this.pitchTent(),
+        'slot-map': () => this.openMap(),
+      };
+      actions[slot.id]?.();
     });
     document.addEventListener('pointerlockchange', () => {
       // Esc releases pointer lock in the browser; treat that as a pause request.
@@ -528,8 +541,7 @@ export class Game {
   // ---------------------------------------------------------------- the Man in Grey
   onBossDefeated() {
     const boss = this.boss;
-    boss.h.hips.position.y = 0.55; // down on one knee
-    boss.h.body.rotation.x = 0.25;
+    boss.model.once('kneel', { hold: true }); // down on one knee
     this.spells.clear();
     this.setMode('card');
     this.screens.showCard({ style: 'memory', ...WARDEN_FALLS });
@@ -553,20 +565,21 @@ export class Game {
     this.screens.hideTitle();
     this.setMode('create');
     const p = this.player;
-    p.getUp = 1;
+    p.lying = false;
+    p.model.reset('idle');
     p.facing = 0;
     this.creator.open((name, appearance) => {
       this.hero = { name, appearance };
       this.camera.clearViewOffset();
       this.portraitLight.intensity = 0;
-      p.getUp = 0;
       p.facing = Math.PI;
+      p.lie();
       this.setMode('intro');
       this.screens.showIntro(INTRO_LINES, () => this.beginWaking());
     }, () => {
       this.camera.clearViewOffset();
       this.portraitLight.intensity = 0;
-      p.getUp = 0;
+      p.lie();
       this.setMode('title');
       this.screens.showSlots('new');
     });
@@ -612,7 +625,7 @@ export class Game {
   // place: 'camp' | 'millbrook' | 'thornbury' (the inns) | 'tent'. Sets where you wake after a defeat.
   rest(place = 'camp', { untilMorning = false } = {}) {
     if (this.space === this.world && this.spawner.anyHunting(this.player.position, 30)) {
-      this.hud.toast("You can't rest while something is hunting you.", 'warn');
+      this.hud.notice("You can't rest while something is hunting you. Deal with it, or lose it first.");
       return;
     }
     this.setMode('transition');
@@ -723,22 +736,49 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- the tent
+  // Pitch the tent a few steps ahead. If it's already pitched somewhere else, it moves here.
   pitchTent() {
     const p = this.player;
-    if (!this.inventory.has('tent')) return;
-    if (this.tent) return this.hud.toast('Your tent is already pitched. Pack it up first.', 'warn');
-    if (this.space !== this.world) return this.hud.toast("There's no room to pitch a tent in here.", 'warn');
-    const x = p.position.x + Math.sin(p.facing) * 3, z = p.position.z + Math.cos(p.facing) * 3;
-    if (this.world.townAt(x, z)) return this.hud.toast('Not in the middle of town. The inn has beds.', 'warn');
-    if (isWater(x, z, 0.5)) return this.hud.toast("You can't pitch a tent in the water.", 'warn');
-    if (this.spawner.anyHunting(p.position, 25)) return this.hud.toast('Not while something is hunting you.', 'warn');
-    this.placeTent({ x, z, ry: p.facing + Math.PI });
-    this.hud.toast('You pitch your tent. <b>E</b> to rest inside or pack it up.', 'quest');
+    if (!this.inventory.has('tent')) return this.hud.notice("You don't have a tent. Odo in Ashford sells them.");
+    if (this.tent && this.space === this.world && Math.hypot(p.position.x - this.tent.x, p.position.z - this.tent.z) < 4.5) {
+      return this.openTentMenu();
+    }
+    if (this.space !== this.world) return this.hud.notice("There's no room to pitch a tent in here.");
+    if (this.spawner.anyHunting(p.position, 25)) return this.hud.notice('Not while something is hunting you.');
+    // Try straight ahead, then a little to either side, then closer in.
+    let spot = null;
+    for (const [dist, turn] of [[3, 0], [3, 0.6], [3, -0.6], [2.2, 0], [3.5, 1.2], [3.5, -1.2]]) {
+      const a = p.facing + turn;
+      const x = p.position.x + Math.sin(a) * dist, z = p.position.z + Math.cos(a) * dist;
+      if (this.world.townAt(x, z) || isWater(x, z, 0.5) || this.tentSlope(x, z) > 0.9) continue;
+      // Not on top of a tree, rock or building.
+      const probe = new THREE.Vector3(x, 0, z);
+      this.world.collide(probe, 1.3);
+      if (Math.hypot(probe.x - x, probe.z - z) > 0.05) continue;
+      spot = { x, z, ry: Math.atan2(p.position.x - x, p.position.z - z) };
+      break;
+    }
+    if (!spot) {
+      const town = this.world.townAt(p.position.x, p.position.z);
+      return this.hud.notice(town ? `Too close to ${town.name}. Walk out past the houses (or rent a bed at the inn).` : 'No flat, open ground here. Try somewhere clearer.');
+    }
+    const moved = !!this.tent;
+    if (moved) this.packTent({ relocating: true });
+    this.placeTent(spot);
+    this.hud.toast(`${moved ? 'You strike your old camp and pitch the tent here.' : 'You pitch your tent.'} <b>E</b> to rest inside or pack it up.`, 'quest');
+  }
+
+  // How uneven the ground is under a tent footprint (metres between highest and lowest corner).
+  tentSlope(x, z) {
+    const hs = [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3], [0, 0]].map(([dx, dz]) => heightAt(x + dx, z + dz));
+    return Math.max(...hs) - Math.min(...hs);
   }
 
   placeTent({ x, z, ry }) {
     const prop = this.world.add(createTent());
-    prop.group.position.set(x, heightAt(x, z), z);
+    // Sit on the lowest corner so no part floats, and tilt gently with the ground.
+    const hs = [[-1.2, 0], [1.2, 0], [0, -1.2], [0, 1.2]].map(([dx, dz]) => heightAt(x + dx, z + dz));
+    prop.group.position.set(x, Math.min(...hs) + 0.02, z);
     prop.group.rotation.y = ry;
     this.scene.add(prop.group);
     const collider = { x, z, r: 1.3 };
@@ -752,13 +792,15 @@ export class Game {
     });
   }
 
-  packTent() {
+  // relocating: the tent is being moved, not put away, so it stays your respawn point.
+  packTent({ relocating = false } = {}) {
     const t = this.tent;
     if (!t) return;
     this.world.remove(t.prop);
     this.world.colliders.splice(this.world.colliders.indexOf(t.collider), 1);
     this.interactions.remove('tent');
     this.tent = null;
+    if (relocating) return;
     if (this.flags.restPoint === 'tent') this.flags.restPoint = 'camp';
     this.hud.toast('You pack the tent away.');
   }
@@ -939,7 +981,8 @@ export class Game {
     Object.assign(p.stats, { mana: 50, maxMana: 50 + ((d.player.stats.level ?? 1) - 1) * 5 }, d.player.stats);
     p.equip(d.player.equipment.weapon);
     p.equip(d.player.equipment.armor);
-    p.getUp = 1;
+    p.lying = false;
+    p.model.reset('idle');
     p.distanceWalked = d.counters.distance || 0;
     this.counters = { ...d.counters };
     this.flags = { ...d.flags };
@@ -1074,12 +1117,16 @@ export class Game {
     // First person from where the hero lies: blinking up at the sky. Then the view pulls back
     // behind them as they get to their feet.
     if (!this.wakeEye) {
-      this.wakeEye = p.h.head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.3, 0));
+      p.mesh.updateMatrixWorld(true);
+      this.wakeEye = p.model.head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.3, 0));
       this.wakeSky = this.wakeEye.clone().add(new THREE.Vector3(0.6, 10, -3.5));
       this.cam.yaw = p.facing + Math.PI;
       this.cam.snapFocus(p.position);
     }
-    p.getUp = smoothstep(2.0, 3.8, t);
+    if (t >= 2.0 && p.lying && !this.standing) {
+      this.standing = true;
+      p.standUp(2.0);
+    }
     p.update(dt, this.input, this.cam.yaw, this.world, false);
     this.cam.update(dt, p.position, false); // where the orbit camera wants to be
     const k = smoothstep(2.2, 4.4, t);
@@ -1088,6 +1135,7 @@ export class Game {
 
     if (t > 4.4) {
       this.wakeEye = null;
+      this.standing = false;
       this.screens.fadeEl.style.opacity = '';
       this.screens.fadeEl.style.transition = '';
       this.hud.show();
@@ -1114,7 +1162,7 @@ export class Game {
     if (input.wasPressed('Escape')) return this.pause();
     if (input.wasPressed('Digit1')) this.quickHeal();
     if (input.wasPressed('KeyL')) this.toggleLantern();
-    if (input.wasPressed('KeyT') && this.inventory.has('tent')) this.pitchTent();
+    if (input.wasPressed('KeyT')) this.pitchTent();
     if (input.wasPressed('KeyR') || input.secondaryClick) this.spells.castFireball();
 
     player.update(dt, input, this.cam.yaw, this.space, true);

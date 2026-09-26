@@ -362,3 +362,25 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 }
 .floater.coin { color: var(--gold); font-size: 17px; }
 .floater.mana { color: #8fb8ff; font-size: 17px; }
+
+/* Centre-screen notice for actions that didn't work */
+#notice {
+  position: fixed; left: 50%; top: 58%; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px));
+  background: rgba(40, 14, 10, 0.85); border: 1px solid rgba(224, 112, 95, 0.6); border-radius: 8px;
+  padding: 8px 16px; font-size: 17px; text-align: center; pointer-events: none; opacity: 0;
+}
+#notice.show { animation: notice 3.2s ease-out forwards; }
+@keyframes notice { 0% { opacity: 0; transform: translate(-50%, 6px); } 8%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+
+/* Hotbar slots can be clicked, not just keyed */
+#hotbar { pointer-events: auto; }
+#hotbar .slot { cursor: pointer; }
+#hotbar .slot:hover { border-color: var(--gold); }
+
+/* Loading screen */
+#loading { background: radial-gradient(ellipse at center, #1f1a12, #0b0a08); z-index: 10; }
+.loading-card { text-align: center; width: min(420px, 100%); }
+.loading-card h1 { font-family: var(--display); font-size: clamp(40px, 8vw, 64px); margin: 0 0 18px; letter-spacing: 0.08em; color: #fbf0d2; }
+.loading-card .bar { height: 10px; }
+.loading-card .fill { width: 0; background: linear-gradient(#f0cf6a, var(--gold)); transition: width 0.2s; }
+.loading-card .what { color: var(--ink-faint); font-size: 14px; margin-top: 10px; min-height: 1.2em; }

@@ -1,14 +1,15 @@
 import * as THREE from 'three';
-import { createHumanoid, animateHumanoid, createWeapon, createCape, createHandLantern } from './Humanoid.js';
-import { clamp, damp, dampAngle, lerp, easeInOut } from '../engine/math.js';
+import { CharacterModel, normaliseAppearance, SKIN_TONES } from './CharacterModel.js';
+import { createWeapon, createCape, createHandLantern, GRIP_R } from './Gear.js';
+import { clamp, damp, dampAngle } from '../engine/math.js';
 import { events } from '../engine/EventBus.js';
 import { ITEMS } from '../data/items.js';
 
 const WALK = 4.8, RUN = 8.5, JUMP = 7.5, GRAVITY = 24, RADIUS = 0.4;
 
-export const DEFAULT_APPEARANCE = {
-  gender: 'male', skin: 0xe0b18c, hair: 0x2b1d14, hairStyle: 'short', shirt: 0x8a7a62, pants: 0x3f3a33, beard: false,
-};
+export const DEFAULT_APPEARANCE = normaliseAppearance({
+  gender: 'male', outfit: 'peasant', skin: SKIN_TONES[1], hair: 0x3a2a1a, hairStyle: 'parted', beard: false, dye: 0xffffff,
+});
 
 // The player moves through a "space" (the outdoor world, a building interior or a cave). A space provides
 // groundAt(x, z), collide(pos, r), clamp(pos) and inWater(x, z).
@@ -19,8 +20,7 @@ export class Player {
     this.velocity = new THREE.Vector3();
     this.facing = Math.PI; // facing north (-z)
     this.grounded = true;
-    this.walkPhase = 0;
-    this.moveAmount = 0;
+    this.airTime = 0;
     this.attackTime = -1;
     this.attackDuration = 0.5;
     this.attackProgress = -1;
@@ -30,8 +30,8 @@ export class Player {
     this.sinceHurt = 99;
     this.dead = false;
     this.deadT = 0;
+    this.lying = false;
     this.distanceWalked = 0;
-    this.getUp = 1; // 0 = lying in the grass, 1 = standing
     this.lanternOn = false;
     this.stats = {
       level: 1, xp: 0, hp: 100, maxHp: 100, stamina: 100, maxStamina: 100, mana: 50, maxMana: 50, baseAttack: 5,
@@ -46,27 +46,28 @@ export class Player {
 
   // (Re)builds the body, keeping position, equipment and lantern.
   setAppearance(appearance) {
-    this.appearance = { ...DEFAULT_APPEARANCE, ...appearance };
+    this.appearance = normaliseAppearance(appearance);
     const parent = this.mesh?.parent ?? this.scene;
-    this.mesh?.removeFromParent();
-    this.h = createHumanoid(this.appearance);
-    this.mesh = this.h.root;
+    this.model?.dispose();
+    this.model = new CharacterModel(this.appearance);
+    this.mesh = this.model.root;
     this.mesh.position.copy(this.position);
     this.position = this.mesh.position;
     this.mesh.rotation.y = this.facing;
     this.mesh.add(this.light);
-    this.h.cape = createCape(0x6e3b2c);
-    this.h.cape.visible = false;
-    this.h.torso.add(this.h.cape);
+    this.cape = createCape(0x6e3b2c);
+    this.cape.visible = false;
+    this.model.bones.spine_03.add(this.cape);
     this.lanternMesh = createHandLantern();
-    this.lanternMesh.position.set(0, -0.12, 0.08);
-    this.h.handL.add(this.lanternMesh);
+    this.model.handL.add(this.lanternMesh);
     const weapon = this.equipment.weapon;
     this.equipment.weapon = null;
     this.weaponMesh = null;
     if (weapon) this.equip(weapon);
     this.applyArmorVisual();
     this.setLantern(this.lanternOn);
+    if (this.lying) this.lie();
+    else this.model.loop('idle', { fade: 0 });
     parent.add(this.mesh);
   }
 
@@ -92,7 +93,8 @@ export class Player {
       this.equipment.weapon = id;
       this.weaponMesh?.removeFromParent();
       this.weaponMesh = createWeapon(id);
-      this.h.handR.add(this.weaponMesh);
+      this.weaponMesh.rotation.copy(GRIP_R);
+      this.model.handR.add(this.weaponMesh);
     }
     if (item?.type === 'armor') {
       this.equipment.armor = id;
@@ -100,18 +102,36 @@ export class Player {
     }
   }
 
-  // Capes show as a cape; body armour tints the tunic.
+  // Capes show as a cape; body armour dyes the outfit.
   applyArmorVisual() {
     const armor = ITEMS[this.equipment.armor];
-    this.h.cape.visible = armor?.visual === 'cape';
-    if (armor?.visual === 'cape') this.h.cape.material.color.setHex(armor.tint ?? 0x6e3b2c);
-    this.h.materials.shirt.color.setHex(armor?.visual === 'body' ? armor.tint : this.appearance.shirt);
+    this.cape.visible = armor?.visual === 'cape';
+    if (armor?.visual === 'cape') this.cape.material.color.setHex(armor.tint ?? 0x6e3b2c);
+    const dye = new THREE.Color(armor?.visual === 'body' ? armor.tint : this.appearance.dye).lerp(new THREE.Color(0xffffff), 0.55);
+    for (const m of this.model.materials) if (/Peasant|Ranger/.test(m.name)) m.color.copy(dye);
   }
 
   setLantern(on) {
     this.lanternOn = on;
     this.light.intensity = on ? 16 : 0;
     this.lanternMesh.visible = on;
+  }
+
+  // Lying on your back in the grass (before waking, and before the intro).
+  lie() {
+    this.lying = true;
+    this.model.pose('getUp', 0);
+  }
+
+  // Get up from lying down; takes about `duration` seconds.
+  standUp(duration = 1.8) {
+    const act = this.model.action('getUp');
+    act.paused = false;
+    act.timeScale = act.getClip().duration / duration;
+    this.model.oneShot = { action: act, hold: false, onDone: () => {
+      this.lying = false;
+      this.model.reset('idle');
+    } };
   }
 
   gainXp(n) {
@@ -153,7 +173,11 @@ export class Player {
       this.dead = true;
       this.deadT = 0;
       this.attackTime = -1;
+      this.castTime = -1;
+      this.model.once('death', { hold: true });
       events.emit('player:died');
+    } else if (this.attackTime < 0 && this.castTime < 0) {
+      this.model.once('hit', { duration: 0.45 });
     }
     return dmg;
   }
@@ -165,25 +189,28 @@ export class Player {
     this.stats.mana = this.stats.maxMana;
     this.position.set(x, y, z);
     this.velocity.set(0, 0, 0);
-    this.h.body.rotation.x = 0;
-    this.h.body.position.y = 0;
+    this.model.reset('idle');
     this.invuln = 2;
   }
 
   startAttack() {
-    if (this.dead || this.attackTime >= 0 || this.castTime >= 0 || this.stats.stamina < 6) return false;
+    if (this.dead || this.lying || this.attackTime >= 0 || this.castTime >= 0 || this.stats.stamina < 6) return false;
     this.attackTime = 0;
     this.attackDuration = this.swingTime;
     this.hitPending = true;
     this.stats.stamina -= 6;
+    // Alternate between two swings so repeated attacks don't look identical.
+    this.swingAlt = !this.swingAlt;
+    this.model.once(this.swingAlt ? 'attack' : 'attackB', { duration: this.attackDuration * 1.5 });
     return true;
   }
 
-  // Casting is a short left-handed thrust; the spell system spawns the projectile.
+  // Casting is a short thrust of the hand; the spell system spawns the projectile.
   startCast(cost) {
-    if (this.dead || this.castTime >= 0 || this.attackTime >= 0 || this.stats.mana < cost) return false;
+    if (this.dead || this.lying || this.castTime >= 0 || this.attackTime >= 0 || this.stats.mana < cost) return false;
     this.stats.mana -= cost;
     this.castTime = 0;
+    this.model.once('cast', { duration: 0.6 });
     return true;
   }
 
@@ -191,9 +218,10 @@ export class Player {
     const s = this.stats, pos = this.position;
     this.invuln = Math.max(0, this.invuln - dt);
     this.sinceHurt += dt;
+    const canMove = controlsEnabled && !this.dead && !this.lying;
 
     let mx = 0, mz = 0;
-    if (controlsEnabled && !this.dead) {
+    if (canMove) {
       const f = (input.isDown('KeyW') || input.isDown('ArrowUp') ? 1 : 0) - (input.isDown('KeyS') || input.isDown('ArrowDown') ? 1 : 0);
       const r = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
       // Camera sits at +(sin yaw, cos yaw) from the player, so "forward" is the opposite.
@@ -208,7 +236,8 @@ export class Player {
     const running = moving && (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && s.stamina > 1;
     let speed = running ? RUN : WALK;
     if (this.attackTime >= 0 || this.castTime >= 0) speed *= 0.35;
-    if (space.inWater(pos.x, pos.z)) speed *= 0.55;
+    const swimming = space.inWater(pos.x, pos.z);
+    if (swimming) speed *= 0.55;
 
     const accel = this.grounded ? 12 : 3;
     this.velocity.x = damp(this.velocity.x, mx * speed, accel, dt);
@@ -218,7 +247,7 @@ export class Player {
     else if (this.attackTime < 0) s.stamina = Math.min(s.maxStamina, s.stamina + 20 * dt);
     s.mana = Math.min(s.maxMana, s.mana + 3 * dt);
 
-    if (controlsEnabled && !this.dead && input.wasPressed('Space') && this.grounded && s.stamina >= 10) {
+    if (canMove && input.wasPressed('Space') && this.grounded && s.stamina >= 10) {
       this.velocity.y = JUMP;
       this.grounded = false;
       s.stamina -= 10;
@@ -239,14 +268,11 @@ export class Player {
     } else {
       this.grounded = false;
     }
+    this.airTime = this.grounded ? 0 : this.airTime + dt;
 
     this.distanceWalked += Math.hypot(pos.x - px, pos.z - pz);
     if (moving) this.facing = dampAngle(this.facing, Math.atan2(mx, mz), 12, dt);
     this.mesh.rotation.y = this.facing;
-
-    const hs = Math.hypot(this.velocity.x, this.velocity.z);
-    this.moveAmount = damp(this.moveAmount, clamp(hs / WALK, 0, 1.3), 10, dt);
-    this.walkPhase += dt * hs * 1.9;
 
     this.attackProgress = -1;
     if (this.attackTime >= 0) {
@@ -257,30 +283,26 @@ export class Player {
         this.attackProgress = -1;
       }
     }
-    let cast = -1;
     if (this.castTime >= 0) {
       this.castTime += dt;
-      cast = this.castTime / 0.4;
-      if (cast >= 1) { this.castTime = -1; cast = -1; }
+      if (this.castTime > 0.45) this.castTime = -1;
     }
 
     if (!this.dead && this.sinceHurt > 5 && s.hp < s.maxHp) this.heal(2 * dt);
 
-    const t = performance.now() / 1000;
-    animateHumanoid(this.h, {
-      phase: this.walkPhase, amount: this.moveAmount, attack: this.attackProgress, cast, holdL: this.lanternOn ? 1 : 0, t,
-    });
-    if (this.lanternOn) this.light.intensity = 16 + Math.sin(t * 9) * 0.8;
-
-    // Lying in the grass at the start, and collapsing on death.
-    let lie = 1 - easeInOut(this.getUp);
-    if (this.dead) {
-      this.deadT += dt;
-      lie = easeInOut(Math.min(1, this.deadT * 1.6));
+    // Animation: locomotion loops underneath one-shots (attacks, casting, hits, death).
+    const hs = Math.hypot(this.velocity.x, this.velocity.z);
+    if (!this.dead && !this.lying) {
+      if (swimming) this.model.loop(hs > 0.5 ? 'Swim_Fwd_Loop' : 'Swim_Idle_Loop');
+      else if (this.airTime > 0.15) this.model.loop('jump', { fade: 0.15 });
+      else this.model.locomote(clamp(hs, 0, RUN));
     }
-    this.h.body.rotation.x = -Math.PI / 2 * lie;
-    this.h.body.position.y = lerp(0, 0.18, lie);
+    this.model.update(dt);
+    if (this.cape.visible) this.cape.rotation.x = 0.12 + 0.28 * Math.min(hs / WALK, 1.4);
 
+    const t = performance.now() / 1000;
+    if (this.lanternOn) this.light.intensity = 16 + Math.sin(t * 9) * 0.8;
+    if (this.dead) this.deadT += dt;
     this.mesh.visible = this.invuln <= 0 || this.dead || Math.floor(this.invuln * 20) % 2 === 0;
   }
 }
