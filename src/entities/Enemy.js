@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { damp, dampAngle, rand } from '../engine/math.js';
 import { events } from '../engine/EventBus.js';
 import { CharacterModel } from './CharacterModel.js';
-import { createWeapon, createCape, GRIP_R } from './Gear.js';
+import { MonsterModel } from './Creatures.js';
+import { createCape, createUprightStaff, CAPE_OFFSET, STAFF_OFFSET } from './Gear.js';
 
 export const ENEMY_TYPES = {
   slime: {
@@ -25,6 +26,16 @@ export const ENEMY_TYPES = {
     windup: 0.55, cooldown: 1.3, xp: 45, radius: 0.5, coins: [3, 10],
     loot: [['bone', 0.6], ['cave_crystal', 0.2], ['potion', 0.1]],
   },
+  imp: {
+    name: 'Cave Imp', hp: 42, damage: 10, speed: 1.8, chaseSpeed: 5.0, aggro: 13, reach: 1.7,
+    windup: 0.35, cooldown: 1.0, xp: 30, radius: 0.5, coins: [2, 8],
+    loot: [['cave_crystal', 0.2], ['mana_potion', 0.12]], model: 'Imp', fallback: 'bat',
+  },
+  puglin: {
+    name: 'Puglin', hp: 30, damage: 8, speed: 1.8, chaseSpeed: 4.6, aggro: 12, reach: 1.3,
+    windup: 0.4, cooldown: 1.1, xp: 22, radius: 0.45, coins: [3, 12],
+    loot: [['bread', 0.3], ['potion', 0.08]], model: 'Puglin', fallback: 'wolf',
+  },
   warden: {
     name: 'Corvin, the Man in Grey', hp: 520, damage: 17, speed: 2.2, chaseSpeed: 4.2, aggro: 40, reach: 2.4,
     windup: 0.5, cooldown: 1.2, xp: 400, radius: 0.55, coins: [0, 0], loot: [], boss: true,
@@ -40,6 +51,13 @@ function part(parent, geo, material, x, y, z) {
   return m;
 }
 
+// Bestiary monsters are only present when built locally (their files can't be shared in the repo);
+// without them, each falls back to a similar creature.
+export function availableType(type) {
+  const def = ENEMY_TYPES[type];
+  return def?.model && !MonsterModel.available(def.model) ? def.fallback : type;
+}
+
 // States: wander -> chase (sees player) -> return (lost player / leashed) -> wander.
 // Enemies live in a "space" (world or cave) that provides groundAt, collide, isSafe and blocked.
 export class Enemy {
@@ -53,7 +71,10 @@ export class Enemy {
     this.removed = false;
     this.home = new THREE.Vector3(x, 0, z);
     this.size = type === 'slime' ? rand(0.85, 1.25) : 1;
-    const builders = { slime: 'buildSlime', wolf: 'buildWolf', bat: 'buildBat', skeleton: 'buildSkeleton', warden: 'buildWarden' };
+    const builders = {
+      slime: 'buildSlime', wolf: 'buildWolf', bat: 'buildBat', skeleton: 'buildSkeleton', warden: 'buildWarden',
+      imp: 'buildMonster', puglin: 'buildMonster',
+    };
     this.mesh = this[builders[type]]();
     this.position = this.mesh.position;
     this.position.set(x, space.groundAt(x, z), z);
@@ -157,7 +178,7 @@ export class Enemy {
     return g;
   }
 
-  // The restless dead: pale, ragged, shambling, with cold glowing eyes and an old sword.
+  // The restless dead: pale, ragged, shambling, with cold glowing eyes. They claw rather than swing.
   buildSkeleton() {
     const m = (this.model = new CharacterModel({
       gender: Math.random() < 0.5 ? 'male' : 'female', outfit: 'peasant', skin: 0x9aa89a, hair: 0x6a6a60,
@@ -169,9 +190,6 @@ export class Enemy {
       eye.position.set(x, 0.1, 0.1); // in front of the eyes, in head-bone space (y up, z forward)
       m.head.add(eye);
     }
-    const sword = createWeapon('rusty_sword');
-    sword.rotation.copy(GRIP_R);
-    m.handR.add(sword);
     this.materials = m.materials;
     this.barHeight = 2.2;
     this.idleAnim = 'zombieIdle';
@@ -182,17 +200,26 @@ export class Enemy {
     return m.root;
   }
 
+  // Imps and Puglins: Bestiary models driven by the character animation library.
+  buildMonster() {
+    const m = (this.model = new MonsterModel(this.def.model, 1 + Math.floor(Math.random() * 3)));
+    this.materials = m.materials;
+    this.barHeight = this.type === 'puglin' ? 1.35 : 2.0;
+    this.idleAnim = 'idle';
+    this.walkAnim = null; // regular locomotion
+    this.attackAnim = this.type === 'puglin' ? 'Punch_Cross' : 'Melee_Hook';
+    m.loop('idle', { fade: 0 });
+    m.mixer.setTime(Math.random() * 3);
+    return m.root;
+  }
+
   // Corvin: tall, grey-cloaked, grey-bearded, with a staff that throws pale orbs.
   buildWarden() {
     const m = (this.model = new CharacterModel({
       gender: 'male', outfit: 'ranger', skin: 0xe8d2c2, hair: 0x9a9da3, hairStyle: 'long', beard: true, dye: 0x6f7378,
     }));
-    const cape = createCape(0x6f7378);
-    m.bones.spine_03.add(cape);
-    const staff = createWeapon('ember_staff');
-    staff.rotation.copy(GRIP_R);
-    staff.position.set(0, 0, -0.35);
-    m.handR.add(staff);
+    m.follow(createCape(0x6f7378), 'spine_03', CAPE_OFFSET);
+    m.follow(createUprightStaff(), 'hand_r', STAFF_OFFSET);
     this.materials = m.materials;
     this.barHeight = 2.3;
     this.idleAnim = 'idle';

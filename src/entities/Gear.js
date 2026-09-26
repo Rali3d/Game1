@@ -14,8 +14,22 @@ function part(geo, material, x = 0, y = 0, z = 0) {
   return m;
 }
 
-// How a weapon (grip at the origin, pointing +z) sits in a character's right hand bone.
-export const GRIP_R = new THREE.Euler(0, Math.PI / 2, 0);
+// How a weapon (grip at the origin, pointing +z) sits in a character's right hand bone. Measured from the
+// skeleton: the fist closes around the hand bone's z axis (thumb side +z), fingers run along +y, and the
+// palm faces -x. The crossguard / axe head lines up with the fingers.
+export const GRIP_R = new THREE.Euler(0, 0, Math.PI / 2);
+export const GRIP_POS = new THREE.Vector3(-0.035, 0.09, 0);
+
+// Sheathed on the back: handle up behind the right shoulder, pointing down across to the left hip.
+// Offset is from the chest bone (spine_03), in the character's own frame (x left, y up, z forward).
+export const SHEATH_POS = new THREE.Vector3(-0.14, 0.22, -0.2);
+export const SHEATH_ROT = new THREE.Quaternion().setFromUnitVectors(
+  new THREE.Vector3(0, 0, 1), new THREE.Vector3(0.38, -0.92, -0.08).normalize());
+
+// Spears and staves are too long to point down: they ride upright across the back, tip over the right shoulder.
+export const SHEATH_POS_LONG = new THREE.Vector3(0.08, 0.02, -0.2);
+export const SHEATH_ROT_LONG = new THREE.Quaternion().setFromUnitVectors(
+  new THREE.Vector3(0, 0, 1), new THREE.Vector3(-0.3, 0.95, -0.1).normalize());
 
 // Builds a weapon from its item definition: grip at the origin, pointing along +z.
 // Swords and axes use the Quaternius prop models (tinted per item); spears and staves are built here.
@@ -29,10 +43,19 @@ export function createWeapon(itemId) {
     const length = it.model === 'sword' ? (it.bladeLength ?? 0.9) / 0.95 : it.damage > 20 ? 1.2 : 1;
     m.scale.set(length > 1 ? 1.05 : 1, length, length > 1 ? 1.05 : 1);
     if (it.tint) {
+      // The kit weapons are bronze. Iron and steel take the colour out of the texture first, since a tint
+      // on its own can only darken orange, not turn it grey.
+      const desat = it.desaturate ?? 0;
       m.traverse((o) => {
-        if (o.isMesh) {
-          o.material = o.material.clone();
-          o.material.color.set(it.tint);
+        if (!o.isMesh) return;
+        o.material = o.material.clone();
+        o.material.color.set(it.tint);
+        if (desat > 0) {
+          o.material.onBeforeCompile = (shader) => {
+            shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+              diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))), ${desat.toFixed(2)});`);
+          };
+          o.material.customProgramCacheKey = () => `desat${desat}`;
         }
       });
     }
@@ -61,10 +84,20 @@ export function createWeapon(itemId) {
   return g;
 }
 
-// A back-only cape hinged at the shoulders. Attach to the chest bone (spine_03) of a character.
+// A staff held upright in the hand (grip at the origin, standing along +y), for CharacterModel.follow()
+// on the right hand bone with STAFF_OFFSET.
+export const STAFF_OFFSET = new THREE.Vector3(0.02, -0.12, 0.06);
+export function createUprightStaff(itemId = 'ember_staff') {
+  const staff = createWeapon(itemId);
+  staff.rotation.x = -Math.PI / 2; // +z -> +y
+  return staff;
+}
+
+// A back-only cape hinged at the shoulders. Hang it from the chest bone with CharacterModel.follow()
+// (offset CAPE_OFFSET) so it stays upright whatever the spine is doing.
+export const CAPE_OFFSET = new THREE.Vector3(0, 0.17, -0.1);
 export function createCape(color) {
   const pivot = new THREE.Group();
-  pivot.position.set(0, 0.17, -0.11);
   const geo = new THREE.CylinderGeometry(0.21, 0.42, 1.15, 12, 1, true, Math.PI - 1.25, 2.5).translate(0, -0.575, 0);
   const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.95, side: THREE.DoubleSide }));
   m.castShadow = true;
@@ -73,7 +106,9 @@ export function createCape(color) {
   return pivot;
 }
 
-// A small hand lantern with a glowing core (the light itself is added by the owner). Hangs from the left hand.
+// A small hand lantern with a glowing core (the light itself is added by the owner). Hang it from the left
+// hand with CharacterModel.follow() and LANTERN_OFFSET so it always hangs upright.
+export const LANTERN_OFFSET = new THREE.Vector3(0, -0.2, 0.04);
 export function createHandLantern() {
   const g = new THREE.Group();
   const frame = mat(0x2e2a26, { metalness: 0.5 });
@@ -84,8 +119,5 @@ export function createHandLantern() {
     color: 0xffe2a0, emissive: 0xffb347, emissiveIntensity: 2, transparent: true, opacity: 0.9,
   }));
   g.add(glass);
-  // The hand bone points down the fingers; flip so the lantern hangs below the fist.
-  g.rotation.x = Math.PI;
-  g.position.set(0, 0.2, 0.02);
   return g;
 }

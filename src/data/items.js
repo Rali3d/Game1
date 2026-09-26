@@ -25,22 +25,22 @@ export const ITEMS = {
   },
   iron_sword: {
     name: 'Iron Sword', icon: '⚔️', type: 'weapon', model: 'sword', damage: 13, reach: 2.7, speed: 0.46, value: 60,
-    metal: 0xd4d8dc, guard: 0xb08d3a, bladeLength: 1.0, tint: 0xc9c9c9,
+    metal: 0xd4d8dc, guard: 0xb08d3a, bladeLength: 1.0, tint: 0xd8d8dc, desaturate: 0.85,
     desc: 'Good Millbrook iron, forged twelve years ago for a man who never came back for it.',
   },
   steel_sword: {
     name: 'Steel Longsword', icon: '⚔️', type: 'weapon', model: 'sword', damage: 19, reach: 2.9, speed: 0.46, value: 160,
-    metal: 0xe8ecf0, guard: 0x3a3a44, bladeLength: 1.15, tint: 0xe6eeff,
+    metal: 0xe8ecf0, guard: 0x3a3a44, bladeLength: 1.15, tint: 0xeef4ff, desaturate: 0.95,
     desc: "Brenna's best work. Balanced so well it feels lighter than it is.",
   },
   woodcutters_axe: {
     name: "Woodcutter's Axe", icon: '🪓', type: 'weapon', model: 'axe', damage: 17, reach: 2.4, speed: 0.66, value: 45,
-    metal: 0x7d7f82, tint: 0xb4a894,
+    metal: 0x7d7f82, tint: 0xc4bcae, desaturate: 0.6,
     desc: 'Heavy and slow, but it splits more than logs.',
   },
   battle_axe: {
     name: 'Battle Axe', icon: '🪓', type: 'weapon', model: 'axe', damage: 25, reach: 2.5, speed: 0.7, value: 190,
-    metal: 0xc4c8cc,
+    metal: 0xc4c8cc, tint: 0xe0e4ea, desaturate: 0.9,
     desc: 'A proper war axe. Every swing is a commitment.',
   },
   hunters_spear: {

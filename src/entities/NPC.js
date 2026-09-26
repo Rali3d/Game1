@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CharacterModel } from './CharacterModel.js';
-import { createCape, createWeapon, GRIP_R } from './Gear.js';
+import { createCape, createUprightStaff, CAPE_OFFSET, STAFF_OFFSET } from './Gear.js';
 import { damp, dampAngle, angleDiff, clamp, rand } from '../engine/math.js';
 import { glowSprite } from '../world/Props.js';
 
@@ -37,10 +37,7 @@ export class NPC {
     this.space = space;
     this.model = new CharacterModel({ ...opts.look, beard: opts.beard ?? opts.look?.beard });
     const m = this.model;
-    if (opts.cloak) {
-      const cape = createCape(opts.cloak);
-      m.bones.spine_03.add(cape);
-    }
+    if (opts.cloak) m.follow(createCape(opts.cloak), 'spine_03', CAPE_OFFSET);
     if (opts.staff) this.addStaff();
 
     this.mesh = m.root;
@@ -69,14 +66,13 @@ export class NPC {
     scene.add(this.mesh);
   }
 
+  // A lantern-topped walking staff, kept upright beside the right hand.
   addStaff() {
-    const staff = createWeapon('ember_staff');
-    staff.rotation.copy(GRIP_R);
-    staff.position.set(0, 0, -0.35); // held a third of the way up the shaft
+    const staff = createUprightStaff();
     const glow = glowSprite(0xffc46b, 1.0, 0.7);
     glow.position.set(0, 0, 1.45);
     staff.add(glow);
-    this.model.handR.add(staff);
+    this.model.follow(staff, 'hand_r', STAFF_OFFSET);
   }
 
   setMarker(visible) {

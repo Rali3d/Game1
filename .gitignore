@@ -2,3 +2,7 @@
 .claude/
 # Raw Quaternius packs (1 GB). tools/build_assets.py copies what the game uses into assets/.
 models/
+# Bestiary monsters (Quaternius Asset License: not for redistribution as assets). Built locally.
+assets/bestiary/
+assets/textures/bestiary/
+assets/manifest.local.json

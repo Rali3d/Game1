@@ -16,7 +16,9 @@ Then open <http://localhost:5173>. `serve.py` is a tiny server that makes the br
 
 ## Art
 
-The characters, animations, buildings, trees and props are by [Quaternius](https://quaternius.com) (CC0). See [`assets/CREDITS.md`](assets/CREDITS.md).
+The characters, animations, buildings, trees, props and farm animals are by [Quaternius](https://quaternius.com) (CC0). See [`assets/CREDITS.md`](assets/CREDITS.md).
+
+The Imp and Puglin monsters are from Quaternius's Bestiary pack, whose license doesn't allow sharing the files, so they aren't in the repository. If you own the pack, put it in `models/` and run `tools/build_assets.py`; otherwise bats and wolves take their place.
 
 - `assets/` holds only the models the game uses, with game-sized textures. It's about 47 MB, loaded behind a progress bar at startup.
 - The raw packs go in `models/`, which is not in git (they're about 1 GB). If you add or change packs, rebuild `assets/` from them:
@@ -55,7 +57,7 @@ The characters, animations, buildings, trees and props are by [Quaternius](https
   - **Thornbury:** a market town with a tavern, a curio shop and a fountain.
 
   Every building can be entered, and each has its own furnished interior (house, inn, shop, chapel, tower, barracks, windmill) with townsfolk to talk to. Enemies won't follow you into town.
-- **Caves:** the Hollow Deep, the Whispering Grotto and the Sunken Vault. Each is a procedurally carved cave, pitch dark apart from glowing crystals, with bats, skeletons and treasure chests. The farthest chest in each holds something good.
+- **Caves:** the Hollow Deep, the Whispering Grotto and the Sunken Vault. Each is a procedurally carved cave, pitch dark apart from glowing crystals, with bats, imps, skeletons and treasure chests. The farthest chest in each holds something good.
 - **Day/night cycle:** a sky shader with sun, moon and stars, moonlight, and time-of-day fog. Town windows and lamps light up at night, and fireflies come out. A full day lasts 9 minutes.
 - **Coins and shops:** enemies, chests and quests pay coins. Six merchants sell weapons, armour, food, potions, tomes and gear, and buy your loot back.
 - **Gear:**
@@ -64,7 +66,8 @@ The characters, animations, buildings, trees and props are by [Quaternius](https
   - A **lantern** for the dark.
   - A **tent** you can pitch almost anywhere outdoors, sleep in until morning (it saves your game), then pack up.
 - **Magic:** after your first memory returns you can throw **fireballs**. They use a mana bar that refills over time. Tomes and a staff make them hotter.
-- **Combat:** swings hit in a frontal arc at the moment the blade comes down, with critical hits, knockback, hit flashes, damage numbers and camera shake. Enemies are slimes and wolves outdoors, bats and skeletons underground, and a boss with blink-teleports and homing orbs.
+- **Combat:** swings hit in a frontal arc at the moment the blade comes down, with critical hits, knockback, hit flashes, damage numbers and camera shake. Enemies are slimes, wolves and puglins outdoors, bats, imps and skeletons underground, and a boss with blink-teleports and homing orbs. Weapons ride on your back and come to hand when you swing.
+- **Animals:** herds of cows, sheep, horses, pigs and llamas graze in pastures around the valley and shy away when you get close. Pip has a dog.
 - **Story:**
   - **Chapter I, The Fieldborn:** recover your memories and your name.
   - **Chapter II, The Man in Grey:** follow his trail from Millbrook to Thornbury to Greywatch, and into the Sunken Vault.
@@ -86,7 +89,7 @@ src/
   Game.js             Orchestrator: modes, spaces (world/interiors/caves), interactions, combat, save/load
   engine/             Renderer + loop, asset loader, input, event bus, math and noise helpers
   world/              Terrain, sky, vegetation, props, Town builder, Interior, Cave, World
-  entities/           CharacterModel (animated Quaternius characters), Gear (weapons, cape, lantern), Player, Enemy, NPC
+  entities/           CharacterModel (animated Quaternius characters), Creatures (monsters, farm animals), Gear (weapons, cape, lantern), Player, Enemy, NPC, Animal
   systems/            Camera, quests, inventory, spawner, spells, interactions, save slots
   ui/                 HUD, minimap, world map, dialogue box, shop, character creator, overlay screens
   data/               Items, shops, towns, caves, NPCs, quests, dialogue and story text

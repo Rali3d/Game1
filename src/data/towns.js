@@ -74,7 +74,7 @@ export const townById = (id) => TOWNS.find((t) => t.id === id);
 
 // Cave mouths set into the hills. `dir` is the way the mouth faces (towards the valley).
 export const CAVES = [
-  { id: 'hollow', name: 'The Hollow Deep', x: 100, z: -118, seed: 11, size: 38, enemies: { bat: 6, skeleton: 3 }, chests: 4 },
-  { id: 'grotto', name: 'Whispering Grotto', x: -152, z: 30, seed: 23, size: 34, enemies: { bat: 8, skeleton: 1 }, chests: 3 },
-  { id: 'vault', name: 'The Sunken Vault', x: -70, z: -158, seed: 37, size: 42, enemies: { skeleton: 6, bat: 3 }, chests: 3, locked: 'vault_key', boss: true },
+  { id: 'hollow', name: 'The Hollow Deep', x: 100, z: -118, seed: 11, size: 38, enemies: { bat: 4, imp: 2, skeleton: 3 }, chests: 4 },
+  { id: 'grotto', name: 'Whispering Grotto', x: -152, z: 30, seed: 23, size: 34, enemies: { bat: 5, imp: 3, skeleton: 1 }, chests: 3 },
+  { id: 'vault', name: 'The Sunken Vault', x: -70, z: -158, seed: 37, size: 42, enemies: { skeleton: 5, imp: 2, bat: 2 }, chests: 3, locked: 'vault_key', boss: true },
 ];

@@ -1,4 +1,4 @@
-import { Enemy } from '../entities/Enemy.js';
+import { Enemy, availableType } from '../entities/Enemy.js';
 import { isWater, LANDMARKS } from '../world/Terrain.js';
 import { lerp } from '../engine/math.js';
 
@@ -12,6 +12,7 @@ export class Spawner {
     this.zones = [
       { type: 'slime', count: 10, minR: 26, maxR: 88 },
       { type: 'wolf', count: 8, minR: 98, maxR: 165 },
+      { type: 'puglin', count: 6, minR: 60, maxR: 150 },
     ];
     for (const z of this.zones) for (let i = 0; i < z.count; i++) this.spawn(z);
   }
@@ -33,7 +34,7 @@ export class Spawner {
   spawn(zone, avoidPos) {
     const spot = this.findSpot(zone, avoidPos);
     if (!spot) return false;
-    const e = new Enemy(zone.type, spot.x, spot.z, this.scene, this.world);
+    const e = new Enemy(availableType(zone.type), spot.x, spot.z, this.scene, this.world);
     e.zone = zone;
     this.enemies.push(e);
     return true;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CharacterModel, normaliseAppearance, SKIN_TONES } from './CharacterModel.js';
-import { createWeapon, createCape, createHandLantern, GRIP_R } from './Gear.js';
+import { createWeapon, createCape, createHandLantern, GRIP_R, GRIP_POS, SHEATH_POS, SHEATH_ROT, SHEATH_POS_LONG, SHEATH_ROT_LONG, CAPE_OFFSET, LANTERN_OFFSET } from './Gear.js';
 import { clamp, damp, dampAngle } from '../engine/math.js';
 import { events } from '../engine/EventBus.js';
 import { ITEMS } from '../data/items.js';
@@ -57,9 +57,9 @@ export class Player {
     this.mesh.add(this.light);
     this.cape = createCape(0x6e3b2c);
     this.cape.visible = false;
-    this.model.bones.spine_03.add(this.cape);
+    this.model.follow(this.cape, 'spine_03', CAPE_OFFSET);
     this.lanternMesh = createHandLantern();
-    this.model.handL.add(this.lanternMesh);
+    this.model.follow(this.lanternMesh, 'hand_l', LANTERN_OFFSET);
     const weapon = this.equipment.weapon;
     this.equipment.weapon = null;
     this.weaponMesh = null;
@@ -91,15 +91,37 @@ export class Player {
     const item = ITEMS[id];
     if (item?.type === 'weapon' && id !== this.equipment.weapon) {
       this.equipment.weapon = id;
-      this.weaponMesh?.removeFromParent();
+      if (this.weaponMesh) this.model.unfollow(this.weaponMesh);
       this.weaponMesh = createWeapon(id);
-      this.weaponMesh.rotation.copy(GRIP_R);
-      this.model.handR.add(this.weaponMesh);
+      this.sheathe();
     }
     if (item?.type === 'armor') {
       this.equipment.armor = id;
       this.applyArmorVisual();
     }
+  }
+
+  // Weapons ride on your back and come into your hand to fight (there's no "walk with a sword" animation,
+  // and a hanging, swinging hand makes a held blade flail about).
+  sheathe() {
+    const w = this.weaponMesh;
+    if (!w) return;
+    this.drawn = false;
+    const long = ['spear', 'staff'].includes(ITEMS[this.equipment.weapon]?.model);
+    this.model.follow(w, 'spine_03', long ? SHEATH_POS_LONG : SHEATH_POS);
+    w.quaternion.copy(long ? SHEATH_ROT_LONG : SHEATH_ROT);
+  }
+
+  draw() {
+    const w = this.weaponMesh;
+    if (!w) return;
+    this.drawnT = 2.5; // seconds before it goes back on your back
+    if (this.drawn) return;
+    this.drawn = true;
+    this.model.unfollow(w);
+    this.model.handR.add(w);
+    w.rotation.copy(GRIP_R);
+    w.position.copy(GRIP_POS);
   }
 
   // Capes show as a cape; body armour dyes the outfit.
@@ -199,6 +221,7 @@ export class Player {
     this.attackDuration = this.swingTime;
     this.hitPending = true;
     this.stats.stamina -= 6;
+    this.draw();
     // Alternate between two swings so repeated attacks don't look identical.
     this.swingAlt = !this.swingAlt;
     this.model.once(this.swingAlt ? 'attack' : 'attackB', { duration: this.attackDuration * 1.5 });
@@ -233,7 +256,11 @@ export class Player {
       if (len > 0) { mx /= len; mz /= len; }
     }
     const moving = mx !== 0 || mz !== 0;
-    const running = moving && (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && s.stamina > 1;
+    // Running out of stamina leaves you winded until it's a third full again, rather than stuttering
+    // between a run and a walk every frame as it trickles back.
+    if (s.stamina <= 0.5) this.winded = true;
+    else if (s.stamina > 30) this.winded = false;
+    const running = moving && (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && !this.winded;
     let speed = running ? RUN : WALK;
     if (this.attackTime >= 0 || this.castTime >= 0) speed *= 0.35;
     const swimming = space.inWater(pos.x, pos.z);
@@ -250,6 +277,7 @@ export class Player {
     if (canMove && input.wasPressed('Space') && this.grounded && s.stamina >= 10) {
       this.velocity.y = JUMP;
       this.grounded = false;
+      this.jumped = true;
       s.stamina -= 10;
     }
     this.velocity.y -= GRAVITY * dt;
@@ -269,6 +297,7 @@ export class Player {
       this.grounded = false;
     }
     this.airTime = this.grounded ? 0 : this.airTime + dt;
+    if (this.grounded) this.jumped = false;
 
     this.distanceWalked += Math.hypot(pos.x - px, pos.z - pz);
     if (moving) this.facing = dampAngle(this.facing, Math.atan2(mx, mz), 12, dt);
@@ -289,12 +318,14 @@ export class Player {
     }
 
     if (!this.dead && this.sinceHurt > 5 && s.hp < s.maxHp) this.heal(2 * dt);
+    if (this.drawn && this.attackTime < 0 && (this.drawnT -= dt) <= 0) this.sheathe();
 
     // Animation: locomotion loops underneath one-shots (attacks, casting, hits, death).
     const hs = Math.hypot(this.velocity.x, this.velocity.z);
     if (!this.dead && !this.lying) {
       if (swimming) this.model.loop(hs > 0.5 ? 'Swim_Fwd_Loop' : 'Swim_Idle_Loop');
-      else if (this.airTime > 0.15) this.model.loop('jump', { fade: 0.15 });
+      // Only show the jump pose for real jumps and long falls, not every little bump when running downhill.
+      else if ((this.jumped && this.airTime > 0.05) || this.airTime > 0.45) this.model.loop('jump', { fade: 0.15 });
       else this.model.locomote(clamp(hs, 0, RUN));
     }
     this.model.update(dt);

@@ -37,6 +37,12 @@ GROUPS = [
     (PROPS, ['*'], 'props', 512),
     (VILLAGE, ['*'], 'village', 1024),
 ]
+# The Bestiary is under the Quaternius Asset License: fine to use in the game, but its files may not be
+# shared as assets, so they go to assets/bestiary/ (gitignored) with their own local manifest.
+BESTIARY = 'Bestiary - Dungeon Monsters Kit[Standard]/Exports/GLB (Godot-Unreal)'
+# The farm animals (CC0) come as animated FBX; three.js loads FBX directly, so they're copied as-is.
+ANIMALS = ('Farm Animals Animated/FBX', ['Cow', 'Horse', 'Pig', 'Sheep', 'Llama', 'Pug'])
+
 ANIMATIONS = [
     ('Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb', 'anims/UAL1.glb'),
     ('Universal Animation Library 2[Standard]/Unreal-Godot/UAL2_Standard.glb', 'anims/UAL2.glb'),
@@ -124,6 +130,61 @@ def process_gltf(src_gltf, out_dir, max_size):
     return name
 
 
+def process_glb(src_glb, out_dir, max_size):
+    """Unpack a .glb with embedded textures into .gltf + .bin + resized external textures."""
+    import struct
+    data = open(src_glb, 'rb').read()
+    _, _, length = struct.unpack('<III', data[:12])
+    off, chunks = 12, []
+    while off < length:
+        clen, ctype = struct.unpack('<II', data[off:off + 8])
+        chunks.append(data[off + 8:off + 8 + clen])
+        off += 8 + clen
+    g, binbuf = json.loads(chunks[0]), chunks[1]
+    name = os.path.splitext(os.path.basename(src_glb))[0]
+    pack = 'bestiary'
+    os.makedirs(os.path.join(OUT, out_dir), exist_ok=True)
+    tmp = os.path.join(OUT, '_tmp')
+    os.makedirs(tmp, exist_ok=True)
+
+    keep = set()
+    for m in g.get('materials', []):
+        m.pop('normalTexture', None)
+        m.pop('occlusionTexture', None)
+        pbr = m.setdefault('pbrMetallicRoughness', {})
+        if pbr.pop('metallicRoughnessTexture', None) is not None:
+            pbr.setdefault('roughnessFactor', 0.8)
+            pbr['metallicFactor'] = 0.0
+        for tex in (pbr.get('baseColorTexture'), m.get('emissiveTexture')):
+            if tex:
+                keep.add(g['textures'][tex['index']]['source'])
+    for idx, image in enumerate(g.get('images', [])):
+        bv = g['bufferViews'][image.pop('bufferView')]
+        image.pop('mimeType', None)
+        if idx not in keep:
+            image['uri'] = ''
+            continue
+        raw_path = os.path.join(tmp, f'{name}_{idx}.png')
+        with open(raw_path, 'wb') as f:
+            start = bv.get('byteOffset', 0)
+            f.write(binbuf[start:start + bv['byteLength']])
+        stem = os.path.splitext(image.get('name') or f'{name}_{idx}')[0]
+        final = os.path.join(tmp, stem + '.png')
+        os.replace(raw_path, final)
+        rel = convert_texture(final, pack, max_size, False)
+        image['uri'] = os.path.relpath(os.path.join(OUT, rel), os.path.join(OUT, out_dir))
+    g['buffers'] = [{'byteLength': len(binbuf), 'uri': name + '.bin'}]
+    with open(os.path.join(OUT, out_dir, name + '.bin'), 'wb') as f:
+        f.write(binbuf)
+    with open(os.path.join(OUT, out_dir, name + '.gltf'), 'w') as f:
+        json.dump(g, f, separators=(',', ':'))
+    # Colour variants (BaseColor_2, _3) for variety, used at runtime.
+    for variant in glob.glob(os.path.join(glob.escape(os.path.join(SRC, BESTIARY.split('/')[0])), 'Textures', f'T_{name}_BaseColor_*.png')):
+        convert_texture(variant, pack, max_size, False)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return name
+
+
 def main():
     if not os.path.isdir(SRC):
         sys.exit('models/ not found: put the Quaternius packs in Game1/models first.')
@@ -145,8 +206,23 @@ def main():
     for src, dst in ANIMATIONS:
         os.makedirs(os.path.dirname(os.path.join(OUT, dst)), exist_ok=True)
         shutil.copy(os.path.join(SRC, src), os.path.join(OUT, dst))
+
+    folder, animals = ANIMALS
+    if os.path.isdir(os.path.join(SRC, folder)):
+        os.makedirs(os.path.join(OUT, 'animals'), exist_ok=True)
+        for a in animals:
+            shutil.copy(os.path.join(SRC, folder, a + '.fbx'), os.path.join(OUT, 'animals', a + '.fbx'))
+        manifest['animals'] = animals
+        print(f'animals: {len(animals)} models')
     with open(os.path.join(OUT, 'manifest.json'), 'w') as f:
         json.dump(manifest, f, indent=1)
+
+    local = {}
+    if os.path.isdir(os.path.join(SRC, BESTIARY)):
+        local['bestiary'] = [process_glb(p, 'bestiary', 1024) for p in sorted(glob.glob(os.path.join(SRC, glob.escape(BESTIARY), '*.glb')))]
+        print(f'bestiary: {len(local["bestiary"])} models (local only, not in git)')
+    with open(os.path.join(OUT, 'manifest.local.json'), 'w') as f:
+        json.dump(local, f, indent=1)
     total = sum(os.path.getsize(os.path.join(dp, fn)) for dp, _, fns in os.walk(OUT) for fn in fns)
     print(f'assets/: {total / 1e6:.1f} MB')
 

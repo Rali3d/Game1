@@ -328,5 +328,13 @@
   "Window_Thin_Round1",
   "Window_Wide_Flat1",
   "Window_Wide_Round1"
+ ],
+ "animals": [
+  "Cow",
+  "Horse",
+  "Pig",
+  "Sheep",
+  "Llama",
+  "Pug"
  ]
 }

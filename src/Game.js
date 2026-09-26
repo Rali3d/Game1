@@ -11,7 +11,9 @@ import { Interior } from './world/Interior.js';
 import { Cave, createChest } from './world/Cave.js';
 import { Player, DEFAULT_APPEARANCE } from './entities/Player.js';
 import { NPC } from './entities/NPC.js';
-import { Enemy } from './entities/Enemy.js';
+import { Enemy, availableType } from './entities/Enemy.js';
+import { Animal, HERDS } from './entities/Animal.js';
+import { Assets } from './engine/Assets.js';
 import { Spawner } from './systems/Spawner.js';
 import { CameraController } from './systems/CameraController.js';
 import { QuestSystem } from './systems/QuestSystem.js';
@@ -104,6 +106,7 @@ export class Game {
 
     this.npcs = {};
     this.setupOutdoorNpcs();
+    this.setupAnimals();
     this.setupInteractables();
     this.bindEvents();
 
@@ -153,6 +156,21 @@ export class Game {
         this.spawnNpc(id, def, t.x + o.x, t.z + o.z, 0, this.world);
       }
     }
+  }
+
+  // Herds in the pastures, and Pip's dog.
+  setupAnimals() {
+    this.animals = [];
+    if (!Assets.names('animals').length) return;
+    const W = this.world;
+    for (const h of HERDS) {
+      for (let i = 0; i < h.count; i++) {
+        const a = (i / h.count) * Math.PI * 2, r = 2 + (i % 2) * 3;
+        this.animals.push(new Animal(h.kind, h.x + Math.cos(a) * r, h.z + Math.sin(a) * r, W, { range: h.range }));
+      }
+    }
+    const pip = this.npcs.pip;
+    if (pip) this.animals.push(new Animal('Pug', pip.position.x + 1.5, pip.position.z, W, { follows: pip, range: 3, shy: 1.4 }));
   }
 
   setupInteractables() {
@@ -515,7 +533,7 @@ export class Game {
       for (let n = 0; n < count && cells.length; n++) {
         const c = take();
         const p = cave.cellCenter(c.i, c.j);
-        this.caveEnemies.push(new Enemy(type, p.x, p.z, cave.scene, cave));
+        this.caveEnemies.push(new Enemy(availableType(type), p.x, p.z, cave.scene, cave));
       }
     }
     if (def.boss && !this.flags.chapter2 && this.quests.isActive('grey4')) {
@@ -1017,6 +1035,7 @@ export class Game {
       if (!frozen) npc.update(dt, t, player.position);
       npc.setMarker(this.mode !== 'title' && this.npcHasNews(id));
     }
+    if (this.space === this.world && !frozen) for (const a of this.animals) a.update(dt, player.position);
 
     switch (this.mode) {
       case 'title':
