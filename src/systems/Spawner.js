@@ -13,7 +13,7 @@ const FAR = 240; // enemies further than this (and not hunting) are removed
 function valeType(d, night, r) {
   if (d < 95) return night && r < 0.15 ? 'bat' : 'slime';
   if (d < 150) return r < 0.6 ? 'wolf' : 'puglin';
-  return r < 0.5 ? 'wolf' : r < 0.8 ? 'puglin' : 'skeleton';
+  return r < 0.5 ? 'wolf' : r < 0.8 || !night ? 'puglin' : 'skeleton'; // the dead only walk the rim at night
 }
 
 function pickWeighted(table, r) {

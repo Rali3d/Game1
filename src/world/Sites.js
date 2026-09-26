@@ -31,7 +31,7 @@ export function createRuin(scene, colliders, site) {
   const cos = Math.cos(ry), sin = Math.sin(ry);
   const toWorld = (lx, lz) => ({ x: site.x + lx * cos + lz * sin, z: site.z - lx * sin + lz * cos });
   const cols = [];
-  const W = Math.max(3, Math.floor(site.size / 3)), D = Math.max(3, Math.floor(site.size / 3.5));
+  const W = Math.max(4, Math.round(site.size * 0.6)), D = Math.max(4, Math.round(site.size * 0.5));
   const hw = W, hd = D; // in metres: the floor spans [-W, W] x [-D, D] (2 m tiles)
 
   // Cracked floor, with tiles missing.
@@ -103,11 +103,11 @@ export function createDungeonDoor(scene, colliders, def) {
   const y = heightAt(def.x, def.z);
   const ry = Math.atan2(-def.x, -def.z); // face the middle of the world
   const mound = new THREE.Mesh(
-    new THREE.SphereGeometry(7, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.SphereGeometry(8, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2),
     new THREE.MeshStandardMaterial({ color: 0x5a6a3e, roughness: 1, flatShading: true }),
   );
-  mound.scale.set(1, 0.55, 1);
-  mound.position.set(0, -0.5, -5.2);
+  mound.scale.set(1, 0.62, 1);
+  mound.position.set(0, -0.4, -8.2); // behind the doorway, as if the door is cut into the hill
   mound.receiveShadow = mound.castShadow = true;
   g.add(mound);
   const kitParts = new THREE.Group();
@@ -139,7 +139,7 @@ export function createDungeonDoor(scene, colliders, def) {
   g.rotation.y = ry;
   scene.add(g);
   const at = (lx, lz) => ({ x: def.x + lx * Math.cos(ry) + lz * Math.sin(ry), z: def.z - lx * Math.sin(ry) + lz * Math.cos(ry) });
-  for (const [lx, lz, r] of [[-3.1, 0, 1.3], [3.1, 0, 1.3], [0, -5, 5.5], [-5.5, -3, 3], [5.5, -3, 3]]) colliders.push({ ...at(lx, lz), r });
+  for (const [lx, lz, r] of [[-3.1, -0.3, 1.3], [3.1, -0.3, 1.3], [0, -8, 7.5], [-5.5, -4.5, 3], [5.5, -4.5, 3]]) colliders.push({ ...at(lx, lz), r });
   const front = at(0, 2.4);
   return {
     def, group: g, glows: lights,

@@ -22,12 +22,15 @@ python3 serve.py   # from this folder: no-cache server on http://localhost:5173
 
 ## Art assets (Quaternius)
 
-- The raw packs live in `models/` (gitignored, 1 GB). `python3 tools/build_assets.py` rebuilds `assets/` from them: it copies the chosen glTFs, shrinks colour textures with `sips`, and drops normal and roughness maps. `assets/manifest.json` lists what the game loads.
+- The raw packs live in `models/` (gitignored, about 1.1 GB). The folders `../Assets` and `../Assets2` are the user's original downloads; the game never reads them. `python3 tools/build_assets.py` rebuilds `assets/` from them: it copies the chosen glTFs, shrinks colour textures with `sips`, and drops normal and roughness maps. `assets/manifest.json` lists what the game loads.
 - The Bestiary pack (Puglin, Imp) is under the Quaternius Asset License: usable in the game, but never commit its files. The build script puts them in `assets/bestiary/` and `assets/manifest.local.json`, both gitignored. Enemy types with a `model` fall back to `fallback` via `availableType()` when they're missing. The other packs are CC0.
 - **Monsters** (`entities/Creatures.js`, `MonsterModel`) share the characters' bone names, so they use the UAL clips through `Assets.retargetedClip()`: rotation tracks only, plus the pelvis position scaled to the monster's height (UAL clips also key position and scale on every bone, which would stretch them).
-- **Farm animals** (`AnimalModel`, `entities/Animal.js`) are FBX in centimetres with their own clips; only Cow and Horse have walk and run, the rest hop. Their materials come in with opacity 0, so `prepare()` forces them opaque. They face +z like the characters.
+- **FBX packs** (farm animals, the monster pack, weapons, dungeon, ruins) load through FBXLoader in `Assets`:
+  - Static ones are scaled to metres (x0.01) on load. Their Phong materials become Standard, with colours converted back from the double sRGB conversion FBXLoader applies.
+  - Their many material groups are compacted to one per material (`compactGroups`). Without that, a dungeon wall costs hundreds of draw calls.
+  - Animated ones use `ClipModel` (`AnimalModel`, `PackMonster`) with their own clips, scaled to a height. Only Cow and Horse walk and run; the other animals hop. They face +z like the characters.
 - `engine/Assets.js` loads everything before `Game` starts. Get models with `Assets.clone('props/Barrel')`, instancing data with `Assets.meshParts(key)`, and animations with `Assets.clip(name)`. It turns on `THREE.Cache` and shares one Texture per image; keep both, or shared texture sheets get fetched and uploaded dozens of times.
-- **Characters** (`entities/CharacterModel.js`): an outfit glTF plus the base body (only head and neck are drawn; the rest is discarded in a shader by bind-pose position) plus hair and beard. All are re-skinned onto the outfit's skeleton, and all share the UAL skeleton. `ANIMS` maps game names to UAL clip names. `loop()` sets the locomotion loop and `once()` plays one-shots that take over and hand back. Head and chest bones are aligned with the character (x right, y up, z forward). Weapons point +z from the grip and sit in `handR` with `GRIP_R`. The player's weapon rides on the back (`SHEATH_*`, following `spine_03`) and moves to the hand only while attacking: the walk and idle clips turn the palm backwards, so a held weapon flails. Capes and lanterns use `follow()` (bone position only), never bone parenting.
+- **Characters** (`entities/CharacterModel.js`): an outfit glTF plus the base body (only head and neck are drawn; the rest is discarded in a shader by bind-pose position) plus hair and beard. All are re-skinned onto the outfit's skeleton, and all share the UAL skeleton. `ANIMS` maps game names to UAL clip names. `loop()` sets the locomotion loop and `once()` plays one-shots that take over and hand back. Head and chest bones are aligned with the character (x right, y up, z forward). Weapons point +z from the grip and sit in `handR` with `GRIP_R`. The player's weapon rides on the back (`SHEATH_*`, following `spine_03`) and moves to the hand only while attacking: the walk and idle clips turn the palm backwards, so a held weapon flails. Lanterns and staves use `follow()` (bone position only), never bone parenting. Cloaks have no model (nothing in the packs fits these characters); they're stats only.
 - `once()` always plays a clip a single time, whatever its name, and hands back to the loop requested meanwhile. `locomote()` has overlapping speed bands so the gait doesn't flicker at the boundaries.
 - **Don't dispose geometry of cloned characters or kit models**: it's shared with the loaded assets. Dispose only materials, which `CharacterModel.dispose()` does.
 - The nature kit stores wind data in vertex colours; `Assets` turns vertex colours off for `nature/*`. The kit bushes borrow the green broadleaf leaves.
@@ -36,11 +39,27 @@ python3 serve.py   # from this folder: no-cache server on http://localhost:5173
 ## Architecture in one breath
 
 `src/Game.js` is the orchestrator:
+- **The land:**
+  - `world/Terrain.js` computes heights once on a 2 m grid, with regions, the Vale rim and passes, lakes, and flats for towns and sites. `heightAt` interpolates exactly like the mesh triangles.
+  - The ground mesh is 100 m chunks built nearest-first and hidden when far. `data/world.js` holds regions, lakes, roads and sites.
+- **Collisions outdoors** go through `ColliderSet` (a spatial grid). Use `push()` and `remove()`. Colliders that move (NPCs, animals) must be marked `dynamic: true`.
+- **Draw distance budget:**
+  - Full trees within 110 m; tree impostors (a baked picture on crossed quads) beyond. Rocks to 230 m, undergrowth to 80 m.
+  - Grass is a patch that follows the player. Towns are hidden past 380 m.
+  - Towns merge their static meshes (`mergeStatic`). Anything that moves must go in its keep list.
+  - Skinned meshes never frustum-cull, so NPCs, animals and enemies are hidden by distance in their update loops.
+  - Point lights: two plaza lights shared by all towns, and a pool of six torch lights in dungeons. Never one light per thing.
+- **Enemies outdoors** come from `Spawner`: 10-17 around the player, chosen by region, scaled by `level` (`scaledDef`), despawned beyond 240 m. Ruins spawn their own guards, and the dragon appears at Emberfall. `game.elite` is shown on the boss bar.
 - **Modes:** `title → (slots) → create → intro → waking → play ⇄ dialogue | card | menu | paused | dead | transition`.
-- **Spaces:** the player is always in one space, `game.space`: the outdoor `World`, an `Interior` (one per building, built lazily on first entry), or a `Cave`. Every space exposes `scene`, `groundAt`, `collide`, `clamp`, `inWater`, `isSafe` (and `blocked` for enemies). `game.switchSpace()` moves the player mesh between scenes, and the engine renders `engine.activeScene`.
+- **Spaces:** the player is always in one space, `game.space`: the outdoor `World`, an `Interior` (one per building, built lazily on first entry), a `Cave`, or a `Dungeon`. Caves and dungeons are `dark` and share the cave enemy list; `space.exitTo` is where a save made inside puts you. Every space exposes `scene`, `groundAt`, `collide`, `clamp`, `inWater`, `isSafe` (and `blocked` for enemies). `game.switchSpace()` moves the player mesh between scenes, and the engine renders `engine.activeScene`.
 - **Interactions** carry a `space` id and only trigger in that space. NPCs are created per space: outdoor ones at startup, indoor ones with their interior.
 
-Content is data in `src/data/*`: `items`, `shops`, `towns` (towns and caves), `npcs` (characters, residents, the shopkeeper helper, the Corvin tree), `dialogue` (Oswin, Brenna, Tam, Pip), `quests` and `story`.
+Content is data in `src/data/*`:
+- `world` (regions, lakes, roads, sites), `towns` (towns, caves, dungeons), `items`, `shops`, `quests`, `story`.
+- `npcs` (the Vale's characters and residents, the Corvin tree) and `dialogue` (Oswin, Brenna, Tam, Pip).
+- `frontier` (the five outer towns' people, shops and quest chains) and `talk` (dialogue helpers: `townTree`, `questDialogue`, `keeperTree`, `barkTree`).
+
+A frontier NPC's `questChain` (`[[questId, afterQuestId], ...]`) drives the "!" over their head. Bounties (`systems/Bounties.js`) register generated quests into `QUESTS` at runtime and save their definitions; their `turnIn` is `'board'`.
 
 ## Rules and gotchas
 
@@ -64,7 +83,16 @@ Content is data in `src/data/*`: `items`, `shops`, `towns` (towns and caves), `n
   - **Captain Hale** in Greywatch gives you the Vault key.
   - In the Sunken Vault you fight **Corvin, Warden of the Crossing**: your old teacher, who was following you, not hunting you.
   - The shards were pieces of a seal, now burned into you.
-- **Open threads for Chapter III:** who wrote the torn letter (it warned against Corvin, maybe to isolate you); what waits behind the stones and the Tower of Glass; and Hale's two missing soldiers.
+- **Open threads for Chapter III:**
+  - Who wrote the torn letter (it warned against Corvin, maybe to isolate you).
+  - What waits behind the stones and the Tower of Glass.
+  - Hale's two missing soldiers.
+- **Frontier side stories** point the same way. A **woman in white** from the Tower of Glass:
+  - taught Morwen of Blackroot Crypt;
+  - paid Rook the bandit king to watch the roads for "one who fell from the sky" (in his ledger);
+  - paid Amberly in tower-stamped coins.
+
+  The Barrow King's crown bears the tower's mark: the Tower is waking the dead.
 - **Other characters:**
   - Millbrook: Brenna (smith), Tam (innkeeper, she/her) and Pip.
   - Ashford: Odo (outfitter) and Sister Maren (chapel).

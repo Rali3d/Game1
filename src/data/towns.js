@@ -40,7 +40,7 @@ export const TOWNS = [
     logs: [[8, -6], [-10, 8]],
   },
   {
-    id: 'greywatch', name: 'Greywatch', subtitle: 'The garrison that watches the northern hills', style: 'brick',
+    id: 'greywatch', name: 'Greywatch', subtitle: 'The garrison that watches the northern hills', style: 'brick', roofTint: 0x9aa0a8,
     x: -95, z: -105, r: 26, entrance: -12,
     walls: [0x9a968c, 0x8c887e, 0xa8a398], roofs: [0x4a5058, 0x3f454c, 0x555a60],
     buildings: [
@@ -50,7 +50,7 @@ export const TOWNS = [
       { kind: 'house', deg: 125, R: 16, w: 5, d: 4.6, h: 2.8, resident: 'widow' },
       { kind: 'house', deg: -128, R: 16, w: 5.5, d: 4.8, h: 2.9 },
     ],
-    well: true, palisade: 23, lamps: [-40, 30, 120, -150, 210],
+    well: true, palisade: 23, gates: [-81, 172], lamps: [-40, 30, 120, -150, 210],
     dummies: [[6, 8], [8.5, 9.5], [4, 10.5]],
   },
   {
@@ -71,7 +71,7 @@ export const TOWNS = [
 
   // ---- Beyond the Vale ----
   {
-    id: 'frosthold', name: 'Frosthold', subtitle: 'A mining town under the northern peaks', style: 'brick', region: 'frost',
+    id: 'frosthold', name: 'Frosthold', subtitle: 'A mining town under the northern peaks', style: 'brick', region: 'frost', roofTint: 0x8a9aae,
     x: 20, z: -440, r: 28, entrance: 112,
     walls: [0xb8b4aa, 0xa8a49a, 0xc4c0b6], roofs: [0x3f454c, 0x4a4f55, 0x5a5048],
     buildings: [
@@ -85,7 +85,7 @@ export const TOWNS = [
     logs: [[9, 6]],
   },
   {
-    id: 'amberly', name: 'Amberly', subtitle: 'Orchards, cider, and a great deal of gossip', region: 'amber',
+    id: 'amberly', name: 'Amberly', subtitle: 'Orchards, cider, and a great deal of gossip', region: 'amber', plasterTint: 0xfff0d0,
     x: 430, z: -30, r: 27, entrance: 187,
     walls: [0xe6d2a8, 0xd8c090, 0xe8dcc0], roofs: [0x9a4a2a, 0x8a5a2a, 0x7a3a2a],
     buildings: [
@@ -100,7 +100,7 @@ export const TOWNS = [
     hay: [[-12, -10], [13, 9]],
   },
   {
-    id: 'stillwater', name: 'Stillwater', subtitle: 'Fishing boats, herons, and the long grey lake', region: 'lake',
+    id: 'stillwater', name: 'Stillwater', subtitle: 'Fishing boats, herons, and the long grey lake', region: 'lake', roofTint: 0x7a9ac0, plasterTint: 0xe8f0f4,
     x: 270, z: 260, r: 26, entrance: 207,
     walls: [0xd8d8d0, 0xc8ccc4, 0xe0dcd0], roofs: [0x3f5a6b, 0x46586b, 0x5a6a6b],
     buildings: [
@@ -114,7 +114,7 @@ export const TOWNS = [
     fences: [[14, 12, 8, -0.8]],
   },
   {
-    id: 'fenwick', name: 'Fenwick', subtitle: 'A damp village on the edge of the Mirefen', region: 'fen',
+    id: 'fenwick', name: 'Fenwick', subtitle: 'A damp village on the edge of the Mirefen', region: 'fen', roofTint: 0x8a9a6a, plasterTint: 0xc8bca0,
     x: -20, z: 430, r: 24, entrance: -81,
     walls: [0x8a7a5a, 0x7a6a4a, 0x9a8a6a], roofs: [0x5a5a3a, 0x4a4a30, 0x6b5a3a],
     buildings: [
@@ -127,7 +127,7 @@ export const TOWNS = [
     fences: [[-10, 12, 7, 0.4]],
   },
   {
-    id: 'oldgate', name: 'Oldgate', subtitle: 'The last town before the ruins of the old kingdom', style: 'brick', region: 'sunder',
+    id: 'oldgate', name: 'Oldgate', subtitle: 'The last town before the ruins of the old kingdom', style: 'brick', region: 'sunder', roofTint: 0xb08a6a,
     x: -440, z: -20, r: 28, entrance: -11,
     walls: [0xa89a80, 0x9a8c72, 0xb4a68a], roofs: [0x5a3a2a, 0x4a3a30, 0x6b4a3a],
     buildings: [
@@ -137,7 +137,7 @@ export const TOWNS = [
       { kind: 'house', deg: 25, R: 16, w: 5.5, d: 5, h: 3.0, resident: 'edda' },
       { kind: 'house', deg: -43, R: 16.5, w: 5, d: 4.6, h: 2.9, resident: 'corwen' },
     ],
-    well: true, palisade: 25, lamps: [-100, 0, 50, 140, -150, 210],
+    well: true, palisade: 25, gates: [-75, 69], lamps: [-100, 0, 50, 140, -150, 210],
     dummies: [[-6, 9], [-8.5, 10]],
   },
 ];

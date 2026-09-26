@@ -593,8 +593,9 @@ export function createTown(scene, colliders, sky, T) {
     const angles = [];
     for (let i = 0; i < count; i++) {
       const deg = (i / count) * 360;
-      let diff = ((deg - T.entrance) % 360 + 540) % 360 - 180;
-      if (Math.abs(diff) > 13) angles.push(deg);
+      // A gap for the main road, and for any other road that reaches the wall (`gates`).
+      const open = [T.entrance, ...(T.gates ?? [])].some((gate) => Math.abs(((deg - gate) % 360 + 540) % 360 - 180) < 13);
+      if (!open) angles.push(deg);
     }
     const posts = new THREE.InstancedMesh(postGeo, M.logs, angles.length);
     const tips = new THREE.InstancedMesh(tipGeo, M.logs, angles.length);
@@ -615,15 +616,40 @@ export function createTown(scene, colliders, sky, T) {
       tips.setMatrixAt(i, dummy.matrix);
     });
     g.add(posts, tips);
-    // Collide in short straight runs along the ring.
-    for (let i = 0; i + 1 < angles.length; i += 6) {
-      const a0 = angles[i] * DEG, a1 = angles[Math.min(i + 6, angles.length - 1)] * DEG;
-      if (Math.abs(a1 - a0) > 0.7) continue; // skip across the gate gap
+    // Collide in short straight runs along the ring, each ending early at a gate gap.
+    const step = (360 / count) * 1.5;
+    for (let i = 0; i + 1 < angles.length;) {
+      let j = i;
+      while (j + 1 < angles.length && j - i < 6 && angles[j + 1] - angles[j] < step) j++;
+      if (j === i) { i++; continue; }
+      const a0 = angles[i] * DEG, a1 = angles[j] * DEG;
+      i = j;
       const x0 = Math.cos(a0) * R, z0 = Math.sin(a0) * R, x1 = Math.cos(a1) * R, z1 = Math.sin(a1) * R;
       const len = Math.hypot(x1 - x0, z1 - z0);
       addBox((x0 + x1) / 2, (z0 + z1) / 2, len / 2 + 0.2, 0.3, Math.atan2(-(z1 - z0), x1 - x0), false);
     }
   }
+
+  // Each town's own roof and plaster colours on the kit's shared textures (`roofTint`, `plasterTint`).
+  const tinted = new Map();
+  const tints = { MI_RoundTiles: T.roofTint, MI_Plaster: T.plasterTint };
+  g.traverse((o) => {
+    if (!o.isMesh || Array.isArray(o.material) || tints[o.material.name] === undefined) return;
+    if (!tinted.has(o.material)) {
+      const m = o.material.clone();
+      m.color.set(tints[o.material.name]);
+      // Take the colour out of the roof tiles first: a tint alone can only darken red, not turn it slate.
+      if (o.material.name === 'MI_RoundTiles') {
+        m.onBeforeCompile = (shader) => {
+          shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))) * 1.25, 0.85);`);
+        };
+        m.customProgramCacheKey = () => 'desat-tint';
+      }
+      tinted.set(o.material, m);
+    }
+    o.material = tinted.get(o.material);
+  });
 
   // Everything that doesn't move becomes one mesh per material: a whole town in a few dozen draw calls.
   mergeStatic(g, [...spinners, flag]);

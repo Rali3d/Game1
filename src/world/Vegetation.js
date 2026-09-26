@@ -17,9 +17,20 @@ function instanced(geometry, material, count, { cast = true, receive = true } = 
 }
 
 // The kit's bushes share the twisted tree's autumn-red leaves; in a green meadow they read better green.
-let greenLeaves = null;
+let greenLeaves = null, oliveLeaves = null;
 function bushLeaves(model, material) {
-  if (!model.includes('Bush_Common') || material.name !== 'Leaves_TwistedTree') return material;
+  if (material.name !== 'Leaves_TwistedTree') return material;
+  // Twisted trees keep their shape but get dark olive leaves: gnarled marsh and forest trees, not autumn.
+  if (model.includes('TwistedTree')) {
+    if (!oliveLeaves) {
+      const src = Assets.meshParts('nature/CommonTree_1').find((p) => /Leaves/.test(p.material.name));
+      oliveLeaves = material.clone();
+      oliveLeaves.map = src?.material.map ?? material.map;
+      oliveLeaves.color = new THREE.Color(0x9aa070);
+    }
+    return oliveLeaves;
+  }
+  if (!model.includes('Bush_Common')) return material;
   if (!greenLeaves) {
     const src = Assets.meshParts('nature/CommonTree_1').find((p) => /Leaves/.test(p.material.name));
     greenLeaves = material.clone();
@@ -316,7 +327,7 @@ export class TreeImpostors {
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(0.4, 1, 1);
     scene.add(sun);
-    for (const p of parts) scene.add(new THREE.Mesh(p.geometry, p.material));
+    for (const p of parts) scene.add(new THREE.Mesh(p.geometry, bushLeaves(model, p.material)));
     const cam = new THREE.OrthographicCamera(box.min.x, box.max.x, box.max.y, box.min.y, -50, 50);
     cam.position.set(0, 0, 20);
     const prevTarget = renderer.getRenderTarget(), prevColor = renderer.getClearColor(new THREE.Color()), prevAlpha = renderer.getClearAlpha();

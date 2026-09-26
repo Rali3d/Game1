@@ -10,6 +10,11 @@ from these packs, all released under **CC0 1.0 (public domain)**:
 - Stylized Nature MegaKit
 - Fantasy Props MegaKit
 - Farm Animals (animated FBX: cow, horse, sheep, pig, llama, pug)
+- Ultimate Stylized Nature (birch and maple trees, bushes, flowers)
+- Animated Monster Pack (slime, bat, dragon)
+- Medieval Weapons Pack
+- Updated Modular Dungeon
+- Ultimate Modular Ruins Pack
 
 The Imp and Puglin monsters come from Quaternius's **Bestiary** pack, which is under the Quaternius Asset
 License: they can be used in games, but the files can't be redistributed. So they are **not in this

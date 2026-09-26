@@ -25,7 +25,9 @@ let leafTexture = null;
 // FBX materials arrive as Phong with a transparency three.js reads as invisible. Swap in the same
 // Standard material the glTF kits use, so everything is lit alike.
 function fbxMaterial(m, folder) {
-  const out = new THREE.MeshStandardMaterial({ name: m.name, color: m.color.clone(), map: m.map ?? null, roughness: 0.85, metalness: 0 });
+  // These exports store linear colours, which FBXLoader reads as sRGB and darkens a second time. Undo that.
+  const color = m.map ? m.color.clone() : m.color.clone().convertLinearToSRGB();
+  const out = new THREE.MeshStandardMaterial({ name: m.name, color, map: m.map ?? null, roughness: 0.85, metalness: 0 });
   if (/Steel|Metal|Gold/i.test(m.name)) Object.assign(out, { roughness: 0.45, metalness: 0.6 });
   if (/Fire/i.test(m.name)) Object.assign(out, { emissive: new THREE.Color(0xff6a1a), emissiveIntensity: 1.5 });
   if (folder === 'ruins' && /Leaf|Green/i.test(m.name)) {

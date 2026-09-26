@@ -37,7 +37,7 @@ export const REGIONS = {
   },
   fen: {
     name: 'The Mirefen', bearing: 180, level: 3, hills: 3, lift: -0.4,
-    grass: [0x5a6a3a, 0x4a5530], dry: 0x5a4a30, tuft: [0.5, 0.6, 0.3],
+    grass: [0x4f5a30, 0x5f6236], dry: 0x4a3f28, tuft: [0.5, 0.6, 0.3],
     trees: [['nature/DeadTree_', 5, 0.5, 0.6], ['nature/TwistedTree_', 5, 0.5, 0.5]], treeDensity: 0.12,
     enemies: { slime: 3, imp: 2 }, night: { bat: 3 },
   },

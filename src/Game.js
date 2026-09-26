@@ -1200,6 +1200,10 @@ export class Game {
       if (this.interactions.has(w.id)) m.push({ x: w.at.x, z: w.at.z, color: '#e6e6e6', r: 2.5 });
     }
     for (const c of CAVES) if (this.flags[`found_${c.id}`]) m.push({ x: c.x, z: c.z, color: '#5a544c', r: 4.5 });
+    for (const d of DUNGEONS) if (this.flags[`found_${d.id}`]) m.push({ x: d.x, z: d.z, color: '#8a6a9a', r: 4.5 });
+    for (const st of SITES) if (this.flags[`found_${st.id}`]) m.push({ x: st.x, z: st.z, color: st.kind === 'peak' ? '#d0502a' : '#a89a80', r: 3.5 });
+    // Notice boards in towns you know.
+    for (const t of this.world.towns) if (this.flags[`visited_${t.id}`]) m.push({ x: t.spots.board.x, z: t.spots.board.z, color: '#efe4c8', r: 2 });
     if (this.tent) m.push({ x: this.tent.x, z: this.tent.z, color: '#c9a24a', r: 3.5 });
     return m;
   }
