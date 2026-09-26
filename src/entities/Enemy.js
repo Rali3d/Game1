@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { damp, dampAngle, rand } from '../engine/math.js';
 import { events } from '../engine/EventBus.js';
 import { CharacterModel } from './CharacterModel.js';
-import { MonsterModel } from './Creatures.js';
-import { createCape, createUprightStaff, CAPE_OFFSET, STAFF_OFFSET } from './Gear.js';
+import { MonsterModel, PackMonster } from './Creatures.js';
+import { createUprightStaff, createWeapon, STAFF_OFFSET, GRIP_R, GRIP_POS } from './Gear.js';
 
 export const ENEMY_TYPES = {
   slime: {
@@ -29,12 +29,37 @@ export const ENEMY_TYPES = {
   imp: {
     name: 'Cave Imp', hp: 42, damage: 10, speed: 1.8, chaseSpeed: 5.0, aggro: 13, reach: 1.7,
     windup: 0.35, cooldown: 1.0, xp: 30, radius: 0.5, coins: [2, 8],
-    loot: [['cave_crystal', 0.2], ['mana_potion', 0.12]], model: 'Imp', fallback: 'bat',
+    loot: [['cave_crystal', 0.2], ['mana_potion', 0.12], ['iron_ore', 0.4]], model: 'Imp', fallback: 'bat',
   },
   puglin: {
     name: 'Puglin', hp: 30, damage: 8, speed: 1.8, chaseSpeed: 4.6, aggro: 12, reach: 1.3,
     windup: 0.4, cooldown: 1.1, xp: 22, radius: 0.45, coins: [3, 12],
     loot: [['bread', 0.3], ['potion', 0.08]], model: 'Puglin', fallback: 'wolf',
+  },
+  bandit: {
+    name: 'Bandit', hp: 55, damage: 12, speed: 2.0, chaseSpeed: 5.2, aggro: 15, reach: 2.0,
+    windup: 0.45, cooldown: 1.2, xp: 40, radius: 0.45, coins: [5, 18],
+    loot: [['bread', 0.3], ['potion', 0.1], ['bandit_badge', 0.5]],
+  },
+  dragon: {
+    name: 'Emberwing, the Old Flame', hp: 900, damage: 26, speed: 3.0, chaseSpeed: 6.5, aggro: 45, reach: 4.2,
+    windup: 0.6, cooldown: 1.6, xp: 1200, radius: 2.2, coins: [250, 400], elite: true, level: 1,
+    loot: [['dragon_scale', 1], ['dragon_scale', 1], ['dragon_heart', 1]],
+  },
+  barrow_king: {
+    name: 'The Barrow King', hp: 420, damage: 20, speed: 1.6, chaseSpeed: 3.6, aggro: 20, reach: 2.6,
+    windup: 0.6, cooldown: 1.3, xp: 500, radius: 0.7, coins: [80, 140], elite: true,
+    loot: [['kings_crown', 1], ['potion', 1]],
+  },
+  crypt_lord: {
+    name: 'Morwen, Lady of the Crypt', hp: 320, damage: 16, speed: 2.0, chaseSpeed: 3.8, aggro: 22, reach: 2.2,
+    windup: 0.5, cooldown: 1.3, xp: 420, radius: 0.55, coins: [60, 120], elite: true, caster: true,
+    loot: [['crypt_sigil', 1], ['mana_potion', 1]],
+  },
+  bandit_king: {
+    name: 'Rook, the Bandit King', hp: 380, damage: 19, speed: 2.2, chaseSpeed: 5.4, aggro: 22, reach: 2.4,
+    windup: 0.45, cooldown: 1.0, xp: 460, radius: 0.55, coins: [150, 250], elite: true,
+    loot: [['rooks_ledger', 1], ['potion', 1]],
   },
   warden: {
     name: 'Corvin, the Man in Grey', hp: 520, damage: 17, speed: 2.2, chaseSpeed: 4.2, aggro: 40, reach: 2.4,
@@ -51,6 +76,20 @@ function part(parent, geo, material, x, y, z) {
   return m;
 }
 
+// How much tougher each region level makes an enemy (level 1 = the Vale).
+export function scaledDef(type, level = 1) {
+  const base = ENEMY_TYPES[type];
+  const L = Math.max(1, level) - 1;
+  if (!L || base.boss) return { ...base, level: level || 1 };
+  return {
+    ...base, level,
+    hp: Math.round(base.hp * (1 + 0.4 * L)),
+    damage: base.damage * (1 + 0.22 * L),
+    xp: Math.round(base.xp * (1 + 0.5 * L)),
+    coins: base.coins.map((c) => Math.round(c * (1 + 0.4 * L))),
+  };
+}
+
 // Bestiary monsters are only present when built locally (their files can't be shared in the repo);
 // without them, each falls back to a similar creature.
 export function availableType(type) {
@@ -61,9 +100,9 @@ export function availableType(type) {
 // States: wander -> chase (sees player) -> return (lost player / leashed) -> wander.
 // Enemies live in a "space" (world or cave) that provides groundAt, collide, isSafe and blocked.
 export class Enemy {
-  constructor(type, x, z, scene, space) {
+  constructor(type, x, z, scene, space, { level = 1 } = {}) {
     this.type = type;
-    this.def = ENEMY_TYPES[type];
+    this.def = scaledDef(type, level);
     this.scene = scene;
     this.space = space;
     this.hp = this.def.hp;
@@ -72,8 +111,12 @@ export class Enemy {
     this.home = new THREE.Vector3(x, 0, z);
     this.size = type === 'slime' ? rand(0.85, 1.25) : 1;
     const builders = {
-      slime: 'buildSlime', wolf: 'buildWolf', bat: 'buildBat', skeleton: 'buildSkeleton', warden: 'buildWarden',
-      imp: 'buildMonster', puglin: 'buildMonster',
+      slime: PackMonster.available('Slime') ? 'buildPackMonster' : 'buildSlime',
+      bat: PackMonster.available('Bat') ? 'buildPackMonster' : 'buildBat',
+      wolf: 'buildWolf', skeleton: 'buildSkeleton', warden: 'buildWarden',
+      imp: 'buildMonster', puglin: 'buildMonster', bandit: 'buildBandit', bandit_king: 'buildBandit',
+      barrow_king: 'buildBarrowKing', crypt_lord: 'buildCryptLord',
+      dragon: PackMonster.available('Dragon') ? 'buildPackMonster' : 'buildWolf',
     };
     this.mesh = this[builders[type]]();
     this.position = this.mesh.position;
@@ -213,12 +256,90 @@ export class Enemy {
     return m.root;
   }
 
-  // Corvin: tall, grey-cloaked, grey-bearded, with a staff that throws pale orbs.
+  // The animated monster pack: slimes (tinted per region), bats, and the dragon.
+  buildPackMonster() {
+    const name = { slime: 'Slime', bat: 'Bat', dragon: 'Dragon' }[this.type];
+    const tint = this.type === 'slime' ? new THREE.Color().setHSL(0.28 + rand(-0.05, 0.08) + (this.def.level - 1) * 0.12, 0.6, 0.45)
+      : this.type === 'dragon' ? new THREE.Color(0x9a2412) : null;
+    const m = (this.model = new PackMonster(name, { scale: this.type === 'slime' ? this.size : 1, tint }));
+    this.pack = true;
+    this.materials = m.materials;
+    this.barHeight = { slime: 1.3 * this.size, bat: 2.4, dragon: 6 }[this.type];
+    this.idleAnim = 'idle';
+    this.walkAnim = 'walk';
+    this.attackAnim = 'attack';
+    m.loop('idle', { fade: 0 });
+    m.mixer.setTime(Math.random() * 2);
+    if (this.type === 'dragon') {
+      this.breathCd = 4;
+      this.hover = 0;
+    }
+    return m.root;
+  }
+
+  // Bandits (and their king): hooded rangers with a blade. Humans, so they use the sword animations.
+  buildBandit() {
+    const king = this.type === 'bandit_king';
+    const female = !king && Math.random() < 0.4;
+    const m = (this.model = new CharacterModel({
+      gender: female ? 'female' : 'male', outfit: 'ranger', hood: !king, beard: !female && Math.random() < 0.6,
+      skin: [0xe0b18c, 0xb88a6a, 0x8a5a3a, 0xd9a883][Math.floor(Math.random() * 4)],
+      hair: 0x2b1d14, hairStyle: king ? 'long' : 'buzzed', dye: king ? 0x3a2a2a : [0x4a3a2a, 0x3a4030, 0x5a4a3a][Math.floor(Math.random() * 3)],
+    }));
+    if (king) m.root.scale.setScalar(1.12);
+    const blade = createWeapon(king ? 'claymore' : Math.random() < 0.5 ? 'iron_sword' : 'dagger');
+    blade.rotation.copy(GRIP_R);
+    blade.position.copy(GRIP_POS);
+    m.handR.add(blade);
+    this.materials = m.materials;
+    this.barHeight = king ? 2.5 : 2.2;
+    this.idleAnim = 'idle';
+    this.walkAnim = null;
+    this.attackAnim = 'attack';
+    m.loop('idle', { fade: 0 });
+    m.mixer.setTime(Math.random() * 3);
+    return m.root;
+  }
+
+  // The Barrow King: a huge crowned corpse with a greatsword.
+  buildBarrowKing() {
+    const root = this.buildSkeleton();
+    const m = this.model;
+    m.root.scale.setScalar(1.4);
+    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a437, metalness: 0.8, roughness: 0.35 });
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.095, 0.07, 8, 1, true), gold);
+    crown.position.set(0, 0.17, 0.01);
+    m.head.add(crown);
+    const blade = createWeapon('claymore');
+    blade.rotation.copy(GRIP_R);
+    blade.position.copy(GRIP_POS);
+    m.handR.add(blade);
+    this.attackAnim = 'attack';
+    this.barHeight = 3;
+    return root;
+  }
+
+  // Morwen: a pale sorceress who hurls cold fire, like Corvin's orbs but green.
+  buildCryptLord() {
+    const m = (this.model = new CharacterModel({
+      gender: 'female', outfit: 'ranger', hood: true, skin: 0xb8c4b8, hair: 0x1a1a1a, hairStyle: 'long', dye: 0x2a3a2a,
+    }));
+    m.follow(createUprightStaff(), 'hand_r', STAFF_OFFSET);
+    this.materials = m.materials;
+    this.barHeight = 2.3;
+    this.idleAnim = 'idle';
+    this.walkAnim = null;
+    this.attackAnim = 'attack';
+    this.orbCd = 2.5;
+    m.loop('idle', { fade: 0 });
+    return m.root;
+  }
+
+  // Corvin: tall, grey-clad, grey-bearded, with a staff that throws pale orbs.
   buildWarden() {
     const m = (this.model = new CharacterModel({
       gender: 'male', outfit: 'ranger', skin: 0xe8d2c2, hair: 0x9a9da3, hairStyle: 'long', beard: true, dye: 0x6f7378,
     }));
-    m.follow(createCape(0x6f7378), 'spine_03', CAPE_OFFSET);
     m.follow(createUprightStaff(), 'hand_r', STAFF_OFFSET);
     this.materials = m.materials;
     this.barHeight = 2.3;
@@ -305,6 +426,28 @@ export class Enemy {
     }
   }
 
+  // Morwen keeps her distance and throws green fire.
+  casterTricks(dt, player, spells, dist) {
+    this.orbCd -= dt;
+    if (this.orbCd > 0 || dist > 22 || dist < 2.5 || !spells) return;
+    this.orbCd = this.hp < this.def.hp * 0.5 ? 2.0 : 3.0;
+    const base = Math.atan2(player.position.x - this.position.x, player.position.z - this.position.z);
+    for (const s of [-0.2, 0, 0.2]) spells.spawnOrb(this, base + s, { color: 0x6aff8a, core: 0xd0ffd8, damage: 12 });
+    this.castAnim = 0.4;
+  }
+
+  // Emberwing breathes fire from the air: a fan of falling fireballs, more often as it weakens.
+  dragonTricks(dt, player, spells, dist) {
+    this.breathCd -= dt;
+    if (this.breathCd > 0 || dist > 30 || dist < 4 || !spells) return;
+    this.breathCd = this.hp < this.def.hp * 0.4 ? 3.2 : 5;
+    const base = Math.atan2(player.position.x - this.position.x, player.position.z - this.position.z);
+    for (const s of [-0.3, -0.1, 0.1, 0.3]) {
+      spells.spawnOrb(this, base + s, { color: 0xff6a1a, core: 0xffd08a, damage: 18, speed: 14, homing: 0.3, from: 3.2, size: 1.6 });
+    }
+    this.model.once('attackB', { duration: 1.0 });
+  }
+
   update(dt, player, camera, night, spells) {
     const d = this.def, pos = this.position, space = this.space;
     if (!this.alive) {
@@ -350,6 +493,8 @@ export class Enemy {
       this.windup = -1;
     }
     if (d.boss && this.state === 'chase') this.wardenTricks(dt, player, spells, dist);
+    if (d.caster && this.state === 'chase') this.casterTricks(dt, player, spells, dist);
+    if (this.type === 'dragon' && this.state === 'chase') this.dragonTricks(dt, player, spells, dist);
 
     let tx = pos.x, tz = pos.z, speed = 0;
     if (this.state === 'wander') {
@@ -394,7 +539,7 @@ export class Enemy {
 
     // Slimes only move while airborne in their hop.
     const hop = Math.max(0, Math.sin(this.phase * 6));
-    const move = this.type === 'slime' && speed > 0 ? speed * hop * 1.8 : speed;
+    const move = this.type === 'slime' && !this.pack && speed > 0 ? speed * hop * 1.8 : speed;
     this.speedNow = damp(this.speedNow, move, 8, dt);
 
     const ox = pos.x, oz = pos.z;
@@ -426,7 +571,22 @@ export class Enemy {
 
   animate(dt, ground, speed, hop) {
     const d = this.def, pos = this.position;
-    if (this.type === 'slime') {
+    if (this.pack) {
+      const m = this.model;
+      if (this.type === 'bat') pos.y = ground + 1.5 + Math.sin(this.phase * 3) * 0.25 - (this.windup >= 0 ? 0.5 * (this.windup / d.windup) : 0);
+      else if (this.type === 'dragon') {
+        // Hovers over its roost, drops lower to bite.
+        const want = this.state === 'chase' ? (this.windup >= 0 || this.lunge > 0 ? 1.2 : 3.4) : 5;
+        this.hover = damp(this.hover, want, 2, dt);
+        pos.y = ground + this.hover + Math.sin(this.phase * 1.6) * 0.3;
+      } else pos.y = ground;
+      if (this.windup >= 0 && !this.swinging) {
+        this.swinging = true;
+        m.once(this.attackAnim, { duration: d.windup + 0.4, onDone: () => (this.swinging = false) });
+      }
+      m.loop(this.speedNow > 0.3 ? this.walkAnim : this.idleAnim, { speed: this.type === 'slime' && this.speedNow > 0.3 ? 1.3 : 1 });
+      m.update(dt);
+    } else if (this.type === 'slime') {
       pos.y = ground + (speed > 0 ? hop * 0.55 : 0);
       let sy = 1 + Math.sin(this.phase * 3) * 0.04;
       if (speed > 0) sy = 1 + (hop - 0.3) * 0.3;

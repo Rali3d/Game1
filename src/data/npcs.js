@@ -1,7 +1,6 @@
 import { wandererTree, brennaTree, tamTree, pipTree } from './dialogue.js';
-
-const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const bye = { text: 'Goodbye.', next: null };
+import { bye, barkTree, keeperTree } from './talk.js';
+import { FRONTIER_NPCS, FRONTIER_RESIDENTS } from './frontier.js';
 
 // Everyone you can talk to. `name(g)` is what prompts and the dialogue box call them; `shop` opens a store.
 // Where they stand: `outdoor` places them in the world; otherwise they're inside the building whose
@@ -51,7 +50,7 @@ export const NPCS = {
   },
   hale: {
     tree: haleTree, questGiver: 'hale',
-    opts: { look: { outfit: 'ranger', skin: 0xd9a883, shirt: 0x9a3f42, hair: 0x6a6a6a, hairStyle: 'buzzed', beard: true }, cloak: 0x7a1f22, idle: 'foldArms' },
+    opts: { look: { outfit: 'ranger', skin: 0xd9a883, shirt: 0x9a3f42, hair: 0x6a6a6a, hairStyle: 'buzzed', beard: true }, idle: 'foldArms' },
     name: (g) => (g.flags.met_hale ? 'Captain Hale' : 'the captain'),
   },
   sera: {
@@ -83,7 +82,7 @@ export const NPCS = {
       'Quiet night last night. Too quiet. The Vault\'s been humming.',
       "Move along, citizen. Or don't. I'm not your mother.",
     ]),
-    opts: { look: { outfit: 'ranger', skin: 0xd9a883, shirt: 0x9a3f42, hair: 0x3a2a1a, hairStyle: 'buzzed' }, cloak: 0x5a1a1c },
+    opts: { look: { outfit: 'ranger', skin: 0xd9a883, shirt: 0x9a3f42, hair: 0x3a2a1a, hairStyle: 'buzzed' } },
     name: () => 'the gate guard',
     outdoor: { town: 'greywatch', x: 20, z: -9 },
   },
@@ -93,10 +92,11 @@ export const NPCS = {
       "Buy me a stew and I'll write you a verse. Something heroic. Rhymes with 'amnesia'... give me time.",
       "Thornbury's the best town in the valley. I say that in every town.",
     ]),
-    opts: { look: { outfit: 'ranger', skin: 0xf0c49e, shirt: 0x5aa07a, hair: 0xd9b36a, hairStyle: 'long' }, cloak: 0x3f5a8a, wander: 6 },
+    opts: { look: { outfit: 'ranger', skin: 0xf0c49e, shirt: 0x5aa07a, hair: 0xd9b36a, hairStyle: 'long' }, wander: 6 },
     name: () => 'the minstrel',
     outdoor: { town: 'thornbury', x: 3, z: 4 },
   },
+  ...FRONTIER_NPCS,
 };
 
 // Townsfolk who live in the houses: a name, a look and a few things to say.
@@ -110,6 +110,7 @@ const RESIDENTS = {
   widow: ['Widow Rhosyn', 'female', ['My Hal went up to the Vault with the others. The captain says he\'ll be back. The captain says a lot of things.', 'Keep your lantern lit up there. Please.']],
   tobin: ['Tobin', 'male', ['The pond by the meadow used to have fish. Now it has slimes. I blame the stones.', "Marisol buys bat wings. Don't ask what for. I asked. I regret it."]],
   wilma: ['Aunt Wilma', 'female', ["There's a cave west of the woods, the Whispering Grotto. My brother swears it whispers his name. He's an idiot, but still.", 'Bram waters his ale. Bram knows I know.']],
+  ...FRONTIER_RESIDENTS,
 };
 const RESIDENT_LOOKS = [
   { skin: 0xe0b18c, shirt: 0x6b5a45, hair: 0x3a2a1a, hairStyle: 'short' },
@@ -129,32 +130,6 @@ export function residentDef(id) {
 }
 
 // ---------------------------------------------------------------- tree helpers
-function barkTree(g, id, lines) {
-  return {
-    greet: { text: () => pick(lines), onEnter: () => (g.flags[`met_${id}`] = true), options: [bye] },
-  };
-}
-
-// A shopkeeper: greeting, their wares, some local news, and goodbye. `extra` adds options before goodbye.
-function keeperTree(g, id, { intro, again, lines }, extra = () => [], nodes = {}) {
-  const hub = () => [
-    ...extra(),
-    { text: 'Show me your wares.', next: null, do: () => g.openShop(id) },
-    { text: 'Heard any news?', next: 'news' },
-    bye,
-  ];
-  return {
-    greet: {
-      text: () => (g.flags[`met_${id}`] ? pick(again) : intro),
-      onEnter: () => (g.flags[`met_${id}`] = true),
-      options: hub,
-    },
-    hub: { text: 'Anything else?', options: hub },
-    news: { text: () => pick(lines), options: hub },
-    ...nodes,
-  };
-}
-
 // ---------------------------------------------------------------- characters with more to say
 function marenTree(g) {
   const hub = () => [

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CharacterModel } from './CharacterModel.js';
-import { createCape, createUprightStaff, CAPE_OFFSET, STAFF_OFFSET } from './Gear.js';
+import { createUprightStaff, STAFF_OFFSET } from './Gear.js';
 import { damp, dampAngle, angleDiff, clamp, rand } from '../engine/math.js';
 import { glowSprite } from '../world/Props.js';
 
@@ -29,7 +29,7 @@ const tmpV = new THREE.Vector3();
 
 // A townsperson or traveller. Options:
 //   look: appearance { gender, outfit, skin, hair, hairStyle, beard, dye }
-//   cloak (colour), staff (lantern staff), scale, idle (animation name for standing about)
+//   staff (lantern staff), scale, idle (animation name for standing about)
 //   wander: radius to stroll around the spawn point (otherwise the NPC stands still)
 // `space` is where they live: the outdoor world or a building interior.
 export class NPC {
@@ -37,7 +37,6 @@ export class NPC {
     this.space = space;
     this.model = new CharacterModel({ ...opts.look, beard: opts.beard ?? opts.look?.beard });
     const m = this.model;
-    if (opts.cloak) m.follow(createCape(opts.cloak), 'spine_03', CAPE_OFFSET);
     if (opts.staff) this.addStaff();
 
     this.mesh = m.root;
@@ -56,7 +55,7 @@ export class NPC {
     this.headYaw = 0;
     this.talking = false;
     // A collider that moves with the NPC so the player can't walk through them.
-    this.collider = { x, z, r: 0.42 * (opts.scale ?? 1) };
+    this.collider = { x, z, r: 0.42 * (opts.scale ?? 1), dynamic: true };
     m.loop(this.idleAnim, { fade: 0 });
     m.mixer.setTime(Math.random() * 3); // so a crowd isn't breathing in unison
 

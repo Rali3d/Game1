@@ -293,7 +293,7 @@ export class CharacterModel extends AnimatedModel {
       }
     });
 
-    // Things that follow a bone's position but keep their own upright orientation (capes, lanterns, staffs).
+    // Things that follow a bone's position but keep their own upright orientation (lanterns, staffs).
     this.followers = [];
     // Sockets for things held or worn.
     this.handR = new THREE.Group();

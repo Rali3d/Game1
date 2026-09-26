@@ -43,7 +43,7 @@ export class CameraController {
     }
     // Roofless interiors and caves: stay high enough to look down over the walls.
     const enclosed = this.space && !this.space.outdoors;
-    const pitch = enclosed ? Math.max(this.pitch, 0.75) : this.pitch;
+    const pitch = enclosed ? Math.max(this.pitch, this.space.camPitch ?? 0.75) : this.pitch;
     const distance = enclosed ? Math.min(this.distance, 8) : this.distance;
 
     this.focus.x = damp(this.focus.x, target.x, 14, dt);

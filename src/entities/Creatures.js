@@ -64,30 +64,60 @@ export class MonsterModel extends AnimatedModel {
   }
 }
 
-// Farm animals (FBX, with their own animations). Only the cow and horse can walk and run; the others hop.
-const ANIMAL_HEIGHT = { Cow: 1.5, Horse: 1.9, Sheep: 1.0, Pig: 0.75, Llama: 1.8, Pug: 0.42 };
-const ANIMAL_CLIPS = { idle: 'Idle', walk: 'Walk', walkSlow: 'WalkSlow', run: 'Run', hop: 'Jump', death: 'Death' };
-
-export class AnimalModel extends AnimatedModel {
-  constructor(kind) {
+// A creature that brings its own animations (the FBX packs): scaled to a height, standing on the ground,
+// with game animation names mapped to its clip names (which end in `|<name>`).
+export class ClipModel extends AnimatedModel {
+  constructor(key, height, clipNames) {
     super();
-    this.kind = kind;
-    const src = Assets.gltf(`animals/${kind}`);
+    const src = Assets.gltf(key);
     this.clips = src.animations;
+    this.clipNames = clipNames;
     this.root = new THREE.Group();
     const body = SkeletonUtils.clone(src.scene);
     const box = new THREE.Box3().setFromObject(src.scene);
-    body.scale.setScalar(ANIMAL_HEIGHT[kind] / (box.max.y - box.min.y));
+    body.scale.setScalar(height / (box.max.y - box.min.y));
     body.position.y = -box.min.y * body.scale.y;
     this.root.add(body);
+    this.body = body;
     this.materials = [];
     prepare(body, this.materials);
-    this.canWalk = this.clips.some((c) => c.name.endsWith('|Walk'));
     this.initAnimation(body);
   }
 
   clipFor(name) {
-    const wanted = ANIMAL_CLIPS[name] ?? name;
+    const wanted = this.clipNames[name] ?? name;
     return this.clips.find((c) => c.name.endsWith(`|${wanted}`)) ?? null;
+  }
+}
+
+// Farm animals. Only the cow and horse can walk and run; the others hop.
+const ANIMAL_HEIGHT = { Cow: 1.5, Horse: 1.9, Sheep: 1.0, Pig: 0.75, Llama: 1.8, Pug: 0.42 };
+const ANIMAL_CLIPS = { idle: 'Idle', walk: 'Walk', walkSlow: 'WalkSlow', run: 'Run', hop: 'Jump', death: 'Death' };
+
+export class AnimalModel extends ClipModel {
+  constructor(kind) {
+    super(`animals/${kind}`, ANIMAL_HEIGHT[kind], ANIMAL_CLIPS);
+    this.kind = kind;
+    this.canWalk = this.clips.some((c) => c.name.endsWith('|Walk'));
+  }
+}
+
+// The animated monster pack: slime, bat and dragon.
+const MONSTERS = {
+  Slime: { height: 0.95, clips: { idle: 'Slime_Idle', walk: 'Slime_Walk', attack: 'Slime_Attack', death: 'Slime_Death' } },
+  Bat: { height: 0.7, clips: { idle: 'Bat_Flying', walk: 'Bat_Flying', attack: 'Bat_Attack', hit: 'Bat_Hit', death: 'Bat_Death' } },
+  Dragon: { height: 4.2, clips: { idle: 'Dragon_Flying', walk: 'Dragon_Flying', attack: 'Dragon_Attack', attackB: 'Dragon_Attack2', hit: 'Dragon_Hit', death: 'Dragon_Death' } },
+};
+export class PackMonster extends ClipModel {
+  static available(name) {
+    return Assets.has(`monsters/${name}`);
+  }
+
+  constructor(name, { scale = 1, tint = null } = {}) {
+    super(`monsters/${name}`, MONSTERS[name].height * scale, MONSTERS[name].clips);
+    if (tint !== null) {
+      // Recolour the main body material (named Main or Body in the pack).
+      for (const m of this.materials) if (/^(Main|Body)$/.test(m.name)) m.color.set(tint);
+    }
   }
 }

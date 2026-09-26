@@ -25,6 +25,7 @@ HAIR = 'Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF 
 NATURE = 'Stylized Nature MegaKit[Standard]/glTF'
 PROPS = 'Fantasy Props MegaKit[Standard]/Exports/glTF'
 VILLAGE = 'Medieval Village MegaKit[Standard]/glTF'
+NATURE2 = 'Ultimate Stylized Nature/glTF'
 
 # (source folder, file glob patterns, output folder, max texture size)
 GROUPS = [
@@ -36,12 +37,27 @@ GROUPS = [
               'Pebble_Round_*', 'Grass_Common_Short', 'Grass_Wispy_Short'], 'nature', 512),
     (PROPS, ['*'], 'props', 512),
     (VILLAGE, ['*'], 'village', 1024),
+    (NATURE2, ['BirchTree_[1-5]', 'MapleTree_[1-5]', 'Bush_Large', 'Bush_Large_Flowers', 'Flower_[1-5]_Clump'], 'nature2', 512),
 ]
 # The Bestiary is under the Quaternius Asset License: fine to use in the game, but its files may not be
 # shared as assets, so they go to assets/bestiary/ (gitignored) with their own local manifest.
 BESTIARY = 'Bestiary - Dungeon Monsters Kit[Standard]/Exports/GLB (Godot-Unreal)'
 # The farm animals (CC0) come as animated FBX; three.js loads FBX directly, so they're copied as-is.
 ANIMALS = ('Farm Animals Animated/FBX', ['Cow', 'Horse', 'Pig', 'Sheep', 'Llama', 'Pug'])
+# Older CC0 packs that only come as FBX (no textures, just coloured materials), copied as-is.
+FBX_PACKS = [
+    ('Animated Monster Pack/FBX', ['Bat', 'Dragon', 'Slime'], 'monsters'),
+    ('Medieval Weapons Pack/FBX', ['Axe', 'Axe_Double', 'Axe_Small', 'Claymore', 'Dagger', 'Dagger_2', 'Hammer_Double',
+                                   'Hammer_Small', 'Scythe', 'Spear', 'Sword', 'Sword_2', 'Sword_Big', 'Sword_Golden'], 'weapons'),
+    ('Modular Dungeon/FBX', ['Wall_Modular', 'Floor_Modular', 'Column', 'Arch', 'Arch_Door', 'Torch', 'Banner', 'Banner_wall',
+                             'Barrel', 'Barrel2', 'Crate', 'Chest', 'Chest_Gold', 'Cobweb', 'Cobweb2', 'Skull', 'Trap_spikes',
+                             'Pedestal', 'Statue_Horse', 'Woodfire', 'Coin_Pile', 'Bag_Coins', 'Vase', 'Table_Big', 'Chair',
+                             'Sword_WallMount', 'Stairs_Modular'], 'dungeon'),
+    ('Modular Ruins/FBX', ['Wall', 'Wall_Broken', 'Wall_Half', 'Wall_Overgrown', 'Wall_ArchRound', 'Wall_ArchRound_Broken',
+                           'Wall_ArchRound_Overgrown_Broken', 'Wall_Double_Broken', 'Arch_Gothic', 'Arch_Round', 'Column_Round',
+                           'Column_Round_Short', 'Column_Square', 'Floor_Standard', 'Floor_Squares', 'Statue_Stag', 'Statue_Fox',
+                           'Cart', 'Pot1', 'Pot2', 'Pot1_Broken', 'Stairs', 'Skull', 'Brick', 'Bricks', 'Candles_1'], 'ruins'),
+]
 
 ANIMATIONS = [
     ('Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb', 'anims/UAL1.glb'),
@@ -214,6 +230,18 @@ def main():
             shutil.copy(os.path.join(SRC, folder, a + '.fbx'), os.path.join(OUT, 'animals', a + '.fbx'))
         manifest['animals'] = animals
         print(f'animals: {len(animals)} models')
+    for folder, names, out_dir in FBX_PACKS:
+        if not os.path.isdir(os.path.join(SRC, folder)):
+            continue
+        os.makedirs(os.path.join(OUT, out_dir), exist_ok=True)
+        for n in names:
+            shutil.copy(os.path.join(SRC, folder, n + '.fbx'), os.path.join(OUT, out_dir, n + '.fbx'))
+        manifest[out_dir] = names
+        print(f'{out_dir}: {len(names)} models')
+    # The ruins' leaves use one shared texture the FBX files don't link to.
+    leaf = os.path.join(SRC, 'Modular Ruins/Textures/Leaf_Texture.png')
+    if os.path.exists(leaf):
+        convert_texture(leaf, 'ruins', 256, True)
     with open(os.path.join(OUT, 'manifest.json'), 'w') as f:
         json.dump(manifest, f, indent=1)
 

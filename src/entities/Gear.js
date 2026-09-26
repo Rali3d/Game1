@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ITEMS } from '../data/items.js';
 import { Assets } from '../engine/Assets.js';
 
-// Held and worn gear: weapons, capes and the hand lantern. Characters themselves are in CharacterModel.
+// Held gear: weapons and the hand lantern. Characters themselves are in CharacterModel.
 
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
@@ -36,6 +36,16 @@ export const SHEATH_ROT_LONG = new THREE.Quaternion().setFromUnitVectors(
 export function createWeapon(itemId) {
   const it = ITEMS[itemId] ?? {};
   const g = new THREE.Group();
+  // The medieval weapons pack: models stand up +y from the grip; scale to length and point them +z.
+  if (it.mesh && Assets.has(it.mesh)) {
+    const m = Assets.clone(it.mesh);
+    const box = new THREE.Box3().setFromObject(m);
+    m.scale.multiplyScalar((it.length ?? 1) / (box.max.y - box.min.y));
+    m.rotation.x = Math.PI / 2;
+    m.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.add(m);
+    return g;
+  }
   const kitModel = { sword: 'props/Sword_Bronze', axe: 'props/Axe_Bronze' }[it.model];
   if (kitModel && Assets.has(kitModel)) {
     const m = Assets.clone(kitModel);
@@ -91,19 +101,6 @@ export function createUprightStaff(itemId = 'ember_staff') {
   const staff = createWeapon(itemId);
   staff.rotation.x = -Math.PI / 2; // +z -> +y
   return staff;
-}
-
-// A back-only cape hinged at the shoulders. Hang it from the chest bone with CharacterModel.follow()
-// (offset CAPE_OFFSET) so it stays upright whatever the spine is doing.
-export const CAPE_OFFSET = new THREE.Vector3(0, 0.17, -0.1);
-export function createCape(color) {
-  const pivot = new THREE.Group();
-  const geo = new THREE.CylinderGeometry(0.21, 0.42, 1.15, 12, 1, true, Math.PI - 1.25, 2.5).translate(0, -0.575, 0);
-  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.95, side: THREE.DoubleSide }));
-  m.castShadow = true;
-  pivot.add(m);
-  pivot.material = m.material;
-  return pivot;
 }
 
 // A small hand lantern with a glowing core (the light itself is added by the owner). Hang it from the left

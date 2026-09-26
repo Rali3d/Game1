@@ -1,11 +1,14 @@
 import * as THREE from 'three';
-import { createTerrainMesh, createWater, heightAt, isPond, isWater, LANDMARKS, WORLD_RADIUS, WATER_LEVEL } from './Terrain.js';
+import { TerrainMesh, createWaters, heightAt, isWater, lakeAt, regionAt, LANDMARKS, WORLD_RADIUS } from './Terrain.js';
 import { Sky } from './Sky.js';
 import { Vegetation } from './Vegetation.js';
 import { createCampfire, createStandingStones, getGlowTexture } from './Props.js';
 import { createTown } from './Town.js';
 import { createCaveMouth } from './Cave.js';
-import { TOWNS, CAVES } from '../data/towns.js';
+import { createRuin, createDungeonDoor, createRoost } from './Sites.js';
+import { ColliderSet } from './Colliders.js';
+import { TOWNS, CAVES, DUNGEONS } from '../data/towns.js';
+import { REGIONS, SITES } from '../data/world.js';
 
 // Assembles the outdoor world and owns collision + safe-zone queries. It is the "outdoor space":
 // interiors and caves offer the same groundAt / collide / clamp / inWater / isSafe / blocked methods.
@@ -14,14 +17,16 @@ export class World {
     this.scene = scene;
     this.id = 'world';
     this.outdoors = true;
-    this.colliders = []; // circles { x, z, r } or rotated boxes { x, z, hw, hd, rot }
+    this.colliders = new ColliderSet(); // circles { x, z, r } or rotated boxes { x, z, hw, hd, rot }
     this.animated = []; // anything with update(t, dt)
     const { spawn, camp, stones, oak, stump, hunterCamp } = LANDMARKS;
     this.safeZones = [{ x: camp.x, z: camp.z, r: 15 }, ...TOWNS.map((t) => ({ x: t.x, z: t.z, r: t.r + 6 }))];
 
-    scene.add(createTerrainMesh(), createWater());
+    this.terrain = new TerrainMesh(scene, spawn);
+    scene.add(...createWaters());
     this.sky = new Sky(scene);
 
+    const ruins = SITES.filter((s) => s.kind === 'ruin');
     // Keep landmarks clear of trees; `grass` is the radius kept free of grass tufts.
     const avoid = [
       { ...spawn, r: 16 },
@@ -30,6 +35,9 @@ export class World {
       { ...oak, r: 6 },
       ...TOWNS.map((t) => ({ x: t.x, z: t.z, r: t.r + 6, grass: 15 })),
       ...CAVES.map((c) => ({ x: c.x, z: c.z, r: 9, grass: 4 })),
+      ...DUNGEONS.map((c) => ({ x: c.x, z: c.z, r: 12, grass: 5 })),
+      ...ruins.map((s) => ({ x: s.x, z: s.z, r: s.size + 6, grass: s.size * 0.6 })),
+      ...SITES.filter((s) => s.kind === 'peak').map((s) => ({ x: s.x, z: s.z, r: s.r + 4, grass: s.r })),
       { ...stump, r: 4, grass: 1.5 },
       { ...hunterCamp, r: 6, grass: 2 },
     ];
@@ -43,8 +51,15 @@ export class World {
     this.towns = TOWNS.map((def) => createTown(scene, this.colliders, this.sky, def));
     this.animated.push(...this.towns);
     this.doors = this.towns.flatMap((t) => t.doors);
+    // Two warm lights, moved to whichever town squares are nearest (a light per town would slow every
+    // material in the world down).
+    this.plazaLights = [0, 1].map(() => {
+      const l = new THREE.PointLight(0xffb45a, 0, 34, 1.5);
+      scene.add(l);
+      return l;
+    });
 
-    // Cave mouths, turned to face down into the valley.
+    // Cave mouths, turned to face the middle of the world.
     this.caveMouths = CAVES.map((c) => {
       const mouth = createCaveMouth(!!c.locked);
       const ry = Math.atan2(-c.x, -c.z);
@@ -57,6 +72,10 @@ export class World {
       return { def: c, mesh: mouth, front: { ...front, y: heightAt(front.x, front.z), facing: ry } };
     });
 
+    this.dungeonDoors = DUNGEONS.map((d) => this.add(createDungeonDoor(scene, this.colliders, d)));
+    this.ruins = ruins.map((s) => ({ def: s, ...createRuin(scene, this.colliders, s) }));
+    this.roost = SITES.filter((s) => s.kind === 'peak').map((s) => ({ def: s, ...createRoost(scene, this.colliders, s) }))[0] ?? null;
+
     this.stones = createStandingStones(stones.x, stones.z);
     scene.add(this.stones.group);
     this.colliders.push(...this.stones.colliders);
@@ -64,6 +83,7 @@ export class World {
 
     this.fireflies = this.createFireflies();
     scene.add(this.fireflies.points);
+    this.fireflyCentre = { x: 0, z: 0 };
   }
 
   createFireflies() {
@@ -97,11 +117,8 @@ export class World {
 
   // Push a circle of radius r out of every collider it overlaps.
   collide(pos, r) {
-    for (const c of this.colliders) {
-      if (c.hw !== undefined) {
-        this.collideBox(pos, r, c);
-        continue;
-      }
+    this.colliders.near(pos.x, pos.z, r, (c) => {
+      if (c.hw !== undefined) return this.collideBox(pos, r, c);
       const dx = pos.x - c.x, dz = pos.z - c.z;
       const min = r + c.r;
       const d2 = dx * dx + dz * dz;
@@ -111,7 +128,7 @@ export class World {
         pos.x += dx * push;
         pos.z += dz * push;
       }
-    }
+    });
   }
 
   collideBox(pos, r, c) {
@@ -144,10 +161,19 @@ export class World {
     return TOWNS.find((t) => Math.hypot(x - t.x, z - t.z) < t.r) ?? null;
   }
 
+  regionAt(x, z) {
+    return regionAt(x, z);
+  }
+
+  regionName(x, z) {
+    return REGIONS[regionAt(x, z)].name;
+  }
+
   // ---- space interface ----
   groundAt(x, z) {
     const h = heightAt(x, z);
-    return isPond(x, z) ? Math.max(h, WATER_LEVEL - 1.1) : h; // swim at the pond's surface
+    const lake = lakeAt(x, z);
+    return lake ? Math.max(h, lake.level - 1.1) : h; // swim at the surface
   }
   inWater(x, z) {
     return isWater(x, z, -0.6);
@@ -166,15 +192,31 @@ export class World {
   // Returns true when a new day begins.
   update(dt, t, focus, camera) {
     const newDay = this.sky.update(dt, focus, camera);
-    this.vegetation.update(t);
+    this.vegetation.update(t, focus, this.sky.daylight);
+    this.terrain.update(focus);
     for (const a of this.animated) a.update(t, dt);
 
+    // Far-off towns and ruins are lost in the fog anyway.
+    for (const t of this.towns) t.group.visible = Math.hypot(t.plaza.x - focus.x, t.plaza.z - focus.z) < 380;
+    for (const r of this.ruins) r.group.visible = Math.hypot(r.centre.x - focus.x, r.centre.z - focus.z) < 330;
+
+    // Plaza lights follow the nearest towns.
+    const night = 1 - this.sky.daylight;
+    const near = [...this.towns].sort((a, b) => Math.hypot(a.plaza.x - focus.x, a.plaza.z - focus.z) - Math.hypot(b.plaza.x - focus.x, b.plaza.z - focus.z));
+    this.plazaLights.forEach((l, i) => {
+      l.position.copy(near[i].plaza);
+      l.intensity = night * 35;
+    });
+
     const ff = this.fireflies;
-    ff.points.material.opacity = 1 - this.sky.daylight;
+    ff.points.material.opacity = night;
     if (ff.points.material.opacity > 0.01) {
+      // The fireflies drift along with you, a cloud around wherever you are.
+      if (Math.hypot(focus.x - this.fireflyCentre.x, focus.z - this.fireflyCentre.z) > 40) this.fireflyCentre = { x: focus.x, z: focus.z };
+      const { x: ox, z: oz } = this.fireflyCentre;
       ff.seeds.forEach((s, i) => {
-        const x = s.x + Math.sin(t * 0.3 + s.p) * 2.5;
-        const z = s.z + Math.cos(t * 0.25 + s.p * 1.3) * 2.5;
+        const x = ox + s.x + Math.sin(t * 0.3 + s.p) * 2.5;
+        const z = oz + s.z + Math.cos(t * 0.25 + s.p * 1.3) * 2.5;
         ff.positions.set([x, heightAt(x, z) + 0.8 + Math.sin(t * 0.9 + s.p) * 0.6, z], i * 3);
       });
       ff.points.geometry.attributes.position.needsUpdate = true;

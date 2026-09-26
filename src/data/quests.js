@@ -1,3 +1,5 @@
+import { FRONTIER_QUESTS } from './frontier.js';
+
 // Quests are data. Each objective watches a counter:
 //   'item:<id>'  -> how many of that item the player holds
 //   anything else -> game.counters[name], bumped by gameplay (e.g. 'kill:slime', 'shard', 'distance')
@@ -94,4 +96,5 @@ export const QUESTS = {
     objectives: [{ text: 'Collect wolf pelts', counter: 'item:wolf_pelt', count: 3 }],
     rewards: { xp: 90, take: { wolf_pelt: 3 }, items: { travelers_cloak: 1 } },
   },
+  ...FRONTIER_QUESTS,
 };

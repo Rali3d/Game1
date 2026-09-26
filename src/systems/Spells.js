@@ -50,13 +50,18 @@ export class Spells {
     this.projectiles.push({ mesh, vx: dx * 24, vz: dz * 24, life: 1.6, owner: 'player', damage: this.fireballDamage(), color: 0xff7a2a });
   }
 
-  spawnOrb(enemy, angle) {
+  // An enemy's bolt: Corvin's pale homing orbs by default; others pass their own colour, damage and speed.
+  // `from` is the launch height; the bolt drops towards the player's chest height as it flies.
+  spawnOrb(enemy, angle, { color = 0x8fa8ff, core = 0xcfd8ff, damage = 11, speed = 10, homing = 1.2, from = 1.4, size = 1 } = {}) {
     const mesh = new THREE.Group();
-    mesh.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 1), new THREE.MeshBasicMaterial({ color: 0xcfd8ff })));
-    mesh.add(glowSprite(0x8fa8ff, 1.5, 0.9));
-    mesh.position.set(enemy.position.x + Math.sin(angle) * 0.8, enemy.position.y + 1.4, enemy.position.z + Math.cos(angle) * 0.8);
+    mesh.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.22 * size, 1), new THREE.MeshBasicMaterial({ color: core })));
+    mesh.add(glowSprite(color, 1.5 * size, 0.9));
+    mesh.position.set(enemy.position.x + Math.sin(angle) * 0.8, enemy.position.y + from, enemy.position.z + Math.cos(angle) * 0.8);
     this.g.activeScene.add(mesh);
-    this.projectiles.push({ mesh, vx: Math.sin(angle) * 10, vz: Math.cos(angle) * 10, life: 3, owner: 'enemy', damage: 11, color: 0x8fa8ff, homing: 1.2 });
+    const p = this.g.player.position;
+    const flight = Math.max(0.3, Math.hypot(p.x - mesh.position.x, p.z - mesh.position.z) / speed);
+    const vy = (p.y + 1.1 - mesh.position.y) / flight;
+    this.projectiles.push({ mesh, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed, vy, life: 3, owner: 'enemy', damage, color, homing });
   }
 
   explode(p) {
@@ -97,6 +102,10 @@ export class Spells {
       }
       pos.x += p.vx * dt;
       pos.z += p.vz * dt;
+      if (p.vy) {
+        pos.y += p.vy * dt;
+        if (pos.y < player.position.y + 1.1) p.vy = 0; // level off at chest height
+      }
       p.life -= dt;
       p.mesh.children[0].rotation.y += dt * 8;
 
@@ -115,7 +124,7 @@ export class Spells {
           if (!e.alive) continue;
           const dx = e.position.x - pos.x, dz = e.position.z - pos.z;
           const dy = e.position.y + 0.8 - pos.y;
-          if (Math.hypot(dx, dz) < e.def.radius + 0.55 && Math.abs(dy) < 1.8) {
+          if (Math.hypot(dx, dz) < e.def.radius + 0.55 && Math.abs(dy) < 1.8 + (e.def.radius > 1.5 ? 3 : 0)) {
             e.takeDamage(p.damage, pos, 5);
             g.hud.floater(e.position, `${p.damage}`, 'crit', e.barHeight);
             this.explode(p);

@@ -5,6 +5,7 @@ import { dampAngle, rand } from '../engine/math.js';
 // A farm animal that grazes and strolls around its pasture, and shies away from the player.
 // Only the cow and horse have walk and run cycles; the others hop when they move.
 const RADIUS = { Cow: 0.7, Horse: 0.7, Sheep: 0.5, Pig: 0.45, Llama: 0.55, Pug: 0.25 };
+const HP = { Cow: 40, Horse: 50, Sheep: 20, Pig: 25, Llama: 30 }; // Pip's dog can't be hurt
 
 export class Animal {
   constructor(kind, x, z, space, opts = {}) {
@@ -18,18 +19,57 @@ export class Animal {
     this.range = opts.range ?? 14;
     this.shy = opts.shy ?? 4.5;
     this.follows = opts.follows; // a pet trots after its owner instead of keeping to a pasture
+    this.maxHp = this.follows ? 0 : HP[kind] ?? 0;
+    this.hp = this.maxHp;
+    this.dead = false;
+    this.panic = 0;
     this.facing = rand(0, Math.PI * 2);
     this.target = this.position.clone();
     this.wait = rand(0, 6);
-    this.collider = { x, z, r: RADIUS[kind] ?? 0.5 };
+    this.collider = { x, z, r: RADIUS[kind] ?? 0.5, dynamic: true };
     space.colliders.push(this.collider);
     this.model.loop('idle', { fade: 0 });
     this.model.mixer.setTime(Math.random() * 3);
     space.scene.add(this.mesh);
   }
 
+  // Returns true if the blow killed it.
+  takeDamage(amount, from) {
+    if (this.dead || !this.hp) return false;
+    this.hp -= amount;
+    this.panic = 6; // bolt, and keep running a while
+    const dx = this.position.x - from.x, dz = this.position.z - from.z, l = Math.hypot(dx, dz) || 1;
+    this.target.set(this.position.x + (dx / l) * 14, 0, this.position.z + (dz / l) * 14);
+    if (this.hp > 0) return false;
+    this.dead = true;
+    this.deadT = 0;
+    this.respawnT = 240;
+    this.collider.x = this.collider.z = Infinity; // nothing to bump into once it's down
+    this.model.once('death', { hold: true });
+    return true;
+  }
+
+  revive() {
+    this.dead = false;
+    this.gone = false;
+    this.hp = this.maxHp;
+    this.position.set(this.home.x, this.space.groundAt(this.home.x, this.home.z), this.home.z);
+    this.target.copy(this.position);
+    this.mesh.visible = true;
+    this.model.reset('idle');
+  }
+
   update(dt, playerPos) {
     const p = this.position;
+    if (this.dead) {
+      // Lie there a moment, then sink out of sight.
+      this.deadT += dt;
+      if (this.deadT > 3) p.y -= dt * 0.5;
+      if (this.deadT > 5) { this.gone = true; this.mesh.visible = false; }
+      this.model.update(dt);
+      return;
+    }
+    this.panic = Math.max(0, this.panic - dt);
     if (this.follows) {
       this.home.copy(this.follows.position);
       if (Math.hypot(p.x - this.home.x, p.z - this.home.z) > this.range * 1.5) this.wait = 0; // keep up
@@ -38,7 +78,9 @@ export class Animal {
     const near = Math.hypot(px, pz);
     let speed = 0;
 
-    if (near < this.shy) {
+    if (this.panic > 0 && Math.hypot(this.target.x - p.x, this.target.z - p.z) > 0.5) {
+      speed = this.model.canWalk ? 6 : 3;
+    } else if (near < this.shy) {
       // Trot away from the player, but not too far from the pasture.
       speed = this.model.canWalk ? 4.5 : 2.4;
       this.target.set(p.x + (px / near) * 6, 0, p.z + (pz / near) * 6);
@@ -91,4 +133,10 @@ export const HERDS = [
   { kind: 'Horse', x: -60, z: -80, count: 3 },
   { kind: 'Pig', x: 88, z: 12, count: 4, range: 8 },
   { kind: 'Llama', x: 52, z: 88, count: 3 },
+  { kind: 'Sheep', x: 470, z: -80, count: 5 }, // Amberly's hill pasture
+  { kind: 'Pig', x: 390, z: 20, count: 3, range: 8 },
+  { kind: 'Llama', x: 70, z: -430, count: 4 }, // Frosthold
+  { kind: 'Cow', x: 230, z: 220, count: 4 }, // Stillwater
+  { kind: 'Pig', x: 30, z: 400, count: 3, range: 8 }, // Fenwick
+  { kind: 'Horse', x: -400, z: 40, count: 4 }, // Oldgate
 ];

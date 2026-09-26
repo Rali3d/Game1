@@ -9,12 +9,14 @@ import { LANDMARKS, heightAt, isWater } from './world/Terrain.js';
 import { createLetter, createShard, createWeaponPickup, createHerb, createTent } from './world/Props.js';
 import { Interior } from './world/Interior.js';
 import { Cave, createChest } from './world/Cave.js';
+import { Dungeon } from './world/Dungeon.js';
 import { Player, DEFAULT_APPEARANCE } from './entities/Player.js';
 import { NPC } from './entities/NPC.js';
 import { Enemy, availableType } from './entities/Enemy.js';
 import { Animal, HERDS } from './entities/Animal.js';
 import { Assets } from './engine/Assets.js';
 import { Spawner } from './systems/Spawner.js';
+import { Bounties } from './systems/Bounties.js';
 import { CameraController } from './systems/CameraController.js';
 import { QuestSystem } from './systems/QuestSystem.js';
 import { Inventory } from './systems/Inventory.js';
@@ -30,7 +32,9 @@ import { WorldMap } from './ui/WorldMap.js';
 import { CharacterCreator } from './ui/CharacterCreator.js';
 import { ITEMS } from './data/items.js';
 import { NPCS, residentDef, corvinTree } from './data/npcs.js';
-import { TOWNS, CAVES, townById } from './data/towns.js';
+import { TOWNS, CAVES, DUNGEONS, townById } from './data/towns.js';
+import { REGIONS, SITES } from './data/world.js';
+import { QUESTS } from './data/quests.js';
 import {
   INTRO_LINES, LETTER, SHARD_MEMORIES, stonesReveal, CHAPTER_END, FIRE_AWAKENS, WARDEN_FALLS, CHAPTER_II_END,
 } from './data/story.js';
@@ -51,8 +55,19 @@ const WEAPON_PICKUPS = [
 ];
 
 // Chest loot: coins plus a pick from the pool. Each cave's farthest chest holds something special.
-const CHEST_POOL = ['potion', 'potion', 'mana_potion', 'cave_crystal', 'stew', 'bread', 'cave_crystal'];
-const CAVE_PRIZE = { hollow: 'battle_axe', grotto: 'ember_staff', vault: 'chainmail' };
+const CHEST_POOL = ['potion', 'potion', 'mana_potion', 'cave_crystal', 'stew', 'bread', 'cave_crystal', 'iron_ore'];
+const CAVE_PRIZE = {
+  hollow: 'battle_axe', grotto: 'ember_staff', vault: 'chainmail',
+  frostmine: 'knight_sword', amber_hollow: 'scythe', bog_warren: 'greater_potion', howling_den: 'scale_mail', drowned_grotto: 'chapel_bell',
+};
+// What each ruin's chest holds, besides coins.
+const RUIN_PRIZE = {
+  sunder_keep: 'greater_potion', stag_chapel: 'tome_embers', old_watch: 'double_axe', fox_shrine: 'cider',
+  drowned_arches: 'fen_cloak', frost_gate: 'knight_sword', barrow_ring: 'greater_potion',
+};
+// Slaughtered livestock: what each animal leaves.
+const ANIMAL_LOOT = { Cow: [['raw_meat', 2], ['hide', 1]], Pig: [['raw_meat', 2], ['hide', 1]], Sheep: [['wool', 1], ['raw_meat', 1]],
+  Llama: [['wool', 2]], Horse: [['hide', 2], ['raw_meat', 1]] };
 const START_COINS = 12;
 const tmp = new THREE.Vector3();
 
@@ -67,6 +82,7 @@ export class Game {
     this.input = new Input(this.canvas);
 
     this.world = new World(scene);
+    this.world.vegetation.buildImpostors(renderer);
     this.space = this.world; // where the player is: the world, an interior or a cave
     this.player = new Player(scene);
     this.inventory = new Inventory();
@@ -81,14 +97,19 @@ export class Game {
     this.tent = null;
     this.interiors = new Map();
     this.caves = new Map();
+    this.dungeons = new Map();
     this.caveEnemies = [];
     this.boss = null;
+    this.elite = null; // a dungeon guardian or the dragon, shown on the boss bar
+    this.insideSites = new Set();
+    this.region = 'vale';
 
     this.hud = new HUD(this);
     this.quests = new QuestSystem(this);
     this.cam = new CameraController(camera, this.input);
     this.cam.space = this.world;
-    this.spawner = new Spawner(scene, this.world);
+    this.spawner = new Spawner(scene, this.world, this);
+    this.bounties = new Bounties(this);
     this.interactions = new Interactions(this.world);
     this.spells = new Spells(this);
     this.dialogue = new DialogueUI();
@@ -281,6 +302,50 @@ export class Game {
         },
       });
     }
+
+    for (const door of this.world.dungeonDoors) {
+      I.add({
+        id: `dungeon:${door.def.id}`, position: door.front, radius: 3,
+        label: () => `[E] Descend into ${door.def.name}`,
+        onUse: () => this.enterDungeon(door.def, door),
+      });
+    }
+
+    // Each ruin hides a chest.
+    for (const ruin of this.world.ruins) {
+      const id = `ruin:${ruin.def.id}`;
+      const chest = createChest();
+      chest.position.set(ruin.chest.x, ruin.chest.y, ruin.chest.z);
+      chest.rotation.y = ruin.chest.ry;
+      this.scene.add(chest);
+      this.world.colliders.push({ x: ruin.chest.x, z: ruin.chest.z, r: 0.6 });
+      I.add({
+        id, position: ruin.chest, radius: 1.9,
+        label: () => '[E] Open the old chest',
+        onUse: () => {
+          this.collect(id);
+          chest.open();
+          this.giveCoins(30 + Math.floor(Math.random() * 60));
+          this.giveItem(RUIN_PRIZE[ruin.def.id] ?? 'potion');
+        },
+        onRemove: () => chest.open(),
+      });
+    }
+
+    // Notice boards and coach stops in every town.
+    for (const town of this.world.towns) {
+      const t = townById(town.id);
+      I.add({
+        id: `board:${t.id}`, position: { ...town.spots.board, y: heightAt(town.spots.board.x, town.spots.board.z) }, radius: 2,
+        label: () => '[E] Read the notice board',
+        onUse: () => this.openBoard(t),
+      });
+      I.add({
+        id: `coach:${t.id}`, position: { ...town.spots.coach, y: heightAt(town.spots.coach.x, town.spots.coach.z) }, radius: 2.2,
+        label: () => '[E] Take the coach',
+        onUse: () => this.openCoach(t),
+      });
+    }
   }
 
   bindEvents() {
@@ -292,6 +357,7 @@ export class Game {
       if (coins > 0) this.giveCoins(coins, enemy.position);
       for (const [id, chance] of enemy.def.loot) if (Math.random() < chance) this.giveItem(id);
       this.bump(`kill:${enemy.type}`);
+      if (enemy.def.elite) this.onEliteDefeated(enemy);
     });
     events.on('boss:defeated', () => this.onBossDefeated());
     events.on('player:hurt', (dmg) => {
@@ -382,7 +448,10 @@ export class Game {
     if (town) return town.name;
     if (Math.hypot(p.x - LANDMARKS.camp.x, p.z - LANDMARKS.camp.z) < 16) return "Oswin's camp";
     if (Math.hypot(p.x - LANDMARKS.stones.x, p.z - LANDMARKS.stones.z) < 30) return 'The Standing Stones';
-    return Math.hypot(p.x, p.z) < 60 ? 'The Hollow Meadow' : 'The wilds';
+    const site = SITES.find((s) => Math.hypot(p.x - s.x, p.z - s.z) < (s.size ?? s.r) + 12);
+    if (site) return site.name;
+    if (Math.hypot(p.x, p.z) < 60) return 'The Hollow Meadow';
+    return REGIONS[this.world.regionAt(p.x, p.z)].name;
   }
 
   tryLock() {
@@ -472,6 +541,7 @@ export class Game {
       this.caves.set(def.id, cave);
       this.addCaveInteractables(cave, mouth);
     }
+    cave.exitTo = { x: mouth.front.x, z: mouth.front.z, facing: mouth.front.facing + Math.PI };
     this.travel(cave, cave.entry, cave.entry.facing, () => {
       this.populateCave(cave);
       this.hud.banner(def.name, def.boss && !this.flags.chapter2 ? 'Something is waiting in the dark.' : '');
@@ -533,7 +603,7 @@ export class Game {
       for (let n = 0; n < count && cells.length; n++) {
         const c = take();
         const p = cave.cellCenter(c.i, c.j);
-        this.caveEnemies.push(new Enemy(availableType(type), p.x, p.z, cave.scene, cave));
+        this.caveEnemies.push(new Enemy(availableType(type), p.x, p.z, cave.scene, cave, { level: def.level ?? 1 }));
       }
     }
     if (def.boss && !this.flags.chapter2 && this.quests.isActive('grey4')) {
@@ -549,11 +619,174 @@ export class Game {
     for (const e of this.caveEnemies) if (!e.removed) e.dispose();
     this.caveEnemies = [];
     this.boss = null;
+    if (this.elite && this.space !== this.world) this.elite = null;
   }
 
   updateCaveEnemies(dt) {
     for (const e of this.caveEnemies) e.update(dt, this.player, this.camera, 1, this.spells);
     this.caveEnemies = this.caveEnemies.filter((e) => !e.removed);
+  }
+
+  enterDungeon(def, door) {
+    let d = this.dungeons.get(def.id);
+    if (!d) {
+      d = new Dungeon(def);
+      this.dungeons.set(def.id, d);
+      this.addDungeonInteractables(d, door);
+    }
+    d.exitTo = { x: door.front.x, z: door.front.z, facing: door.front.facing + Math.PI };
+    this.travel(d, d.entry, d.entry.facing, () => {
+      this.populateDungeon(d);
+      const cleared = this.flags[`cleared_${def.id}`];
+      this.hud.banner(def.name, cleared ? 'Quiet, now.' : 'Something old is awake down here.');
+      if (!this.player.lanternOn && !this.inventory.has('lantern')) this.hud.toast('It is dark down here. A lantern would help.', 'warn');
+    });
+  }
+
+  addDungeonInteractables(d, door) {
+    const def = d.def;
+    this.interactions.add({
+      id: `exit:${d.id}`, space: d.id, position: { ...d.exitPoint, y: 0 }, radius: 2.2,
+      label: () => '[E] Climb back up to daylight',
+      onUse: () => this.travel(this.world, door.front, door.front.facing + Math.PI),
+    });
+    // A chest in the corner of several rooms; the guardian's hall holds the prize.
+    const rooms = d.rooms.slice(1).filter((r) => r !== d.boss).slice(0, def.chests - 1);
+    rooms.push(d.boss);
+    rooms.forEach((r, n) => {
+      const prize = r === d.boss;
+      const i = prize ? r.i + Math.floor(r.w / 2) : r.i + 1, j = prize ? r.j + 2 : r.j + r.h - 2;
+      const pos = d.cellCenter(i, j);
+      const id = `chest:${def.id}:${n}`;
+      const chest = createChest();
+      chest.position.set(pos.x, 0, pos.z);
+      chest.rotation.y = prize ? 0 : Math.PI / 2;
+      d.scene.add(chest);
+      d.objects.push({ x: pos.x, z: pos.z, r: 0.6 });
+      if (this.collected.has(id)) return chest.open();
+      this.interactions.add({
+        id, space: d.id, position: { x: pos.x, y: 0, z: pos.z }, radius: 1.8,
+        label: () => (prize && this.bossAlive(d) ? '[E] Open the chest (its guardian still walks)' : '[E] Open the chest'),
+        onUse: () => {
+          if (prize && this.bossAlive(d)) return this.hud.toast('Not while its guardian stands.', 'warn');
+          this.collect(id);
+          chest.open();
+          this.giveCoins((prize ? 120 : 25) + Math.floor(Math.random() * 40) * def.level);
+          this.giveItem(prize ? def.prize : CHEST_POOL[Math.floor(Math.random() * CHEST_POOL.length)]);
+        },
+      });
+    });
+  }
+
+  bossAlive(d) {
+    return this.caveEnemies.some((e) => e.alive && e.type === d.def.boss);
+  }
+
+  populateDungeon(d) {
+    this.leaveCave();
+    const def = d.def;
+    const cells = d.farCells(10).filter((c) => !(c.i >= d.boss.i && c.i < d.boss.i + d.boss.w && c.j >= d.boss.j && c.j < d.boss.j + d.boss.h));
+    const take = () => cells.splice(Math.floor(Math.random() * cells.length), 1)[0];
+    for (const [type, count] of Object.entries(def.enemies)) {
+      for (let n = 0; n < count && cells.length; n++) {
+        const c = take();
+        const p = d.cellCenter(c.i, c.j);
+        this.caveEnemies.push(new Enemy(availableType(type), p.x, p.z, d.scene, d, { level: def.level }));
+      }
+    }
+    if (!this.flags[`cleared_${def.id}`]) {
+      const p = d.cellCenter(d.boss.i + Math.floor(d.boss.w / 2), d.boss.j + Math.floor(d.boss.h / 2) + 1);
+      const boss = new Enemy(def.boss, p.x, p.z, d.scene, d, { level: 1 });
+      boss.facing = Math.PI;
+      this.caveEnemies.push(boss);
+      this.elite = boss;
+    }
+  }
+
+  // A dungeon guardian or the dragon has fallen.
+  onEliteDefeated(enemy) {
+    this.hud.toast(`<b>${enemy.def.name}</b> is defeated!`, 'quest-done');
+    this.cam.shake(0.5);
+    if (this.elite === enemy) this.elite = null;
+    if (enemy.type === 'dragon') {
+      this.flags.dragonSlain = true;
+      this.bump('defeat:dragon');
+    }
+    const dungeon = DUNGEONS.find((d) => d.boss === enemy.type);
+    if (dungeon) {
+      this.flags[`cleared_${dungeon.id}`] = true;
+      this.bump(`clear:${dungeon.id}`);
+    }
+    this.save(false);
+  }
+
+  // ---------------------------------------------------------------- notice boards and coaches
+  openBoard(town) {
+    const b = this.bounties;
+    b.visitBoard(town.id);
+    const offers = b.offers(town.id).filter((o) => !b.taken.has(o.id));
+    this.setMode('dialogue');
+    const nodes = {
+      greet: {
+        text: () => (offers.length
+          ? `The ${town.name} notice board. Fresh notices are pinned up every morning. (${b.active.length}/3 jobs taken)`
+          : `The ${town.name} notice board. Nothing new today; come back tomorrow.`),
+        options: () => [
+          ...offers.filter((o) => !b.taken.has(o.id)).map((o) => ({ text: `${o.title}  (${o.rewards.coins} 🪙)`, next: o.id })),
+          { text: 'Leave it.', next: null },
+        ],
+      },
+    };
+    for (const o of offers) {
+      nodes[o.id] = {
+        text: o.summary,
+        options: () => [
+          { text: 'Take the job.', next: 'greet', do: () => b.accept(o) },
+          { text: 'Back.', next: 'greet' },
+        ],
+      };
+    }
+    this.dialogue.open('Notice board', nodes, 'greet', () => {
+      if (this.mode === 'dialogue') this.setMode('play');
+    });
+  }
+
+  // Coaches run between the towns you've been to. The fare goes by distance, and the trip takes time.
+  openCoach(town) {
+    const dests = TOWNS.filter((t) => t.id !== town.id && this.flags[`visited_${t.id}`]);
+    const fare = (t) => Math.max(8, Math.round(Math.hypot(t.x - town.x, t.z - town.z) / 14));
+    this.setMode('dialogue');
+    this.dialogue.open('Coach driver', {
+      greet: {
+        text: dests.length
+          ? `"Where to? I go anywhere there's a road and a town you've been to. Coin up front."`
+          : '"I only go to towns you know the way to, friend. See a bit of the world first."',
+        options: () => [
+          ...dests.map((t) => ({
+            text: `${t.name}  (${fare(t)} 🪙)`, next: null,
+            do: () => {
+              if (this.coins < fare(t)) return this.hud.toast("You can't afford the fare.", 'warn');
+              if (this.spawner.anyHunting(this.player.position, 30)) return this.hud.toast('Not with something hunting you.', 'warn');
+              this.coins -= fare(t);
+              const stop = this.world.towns.find((w) => w.id === t.id).spots.coach;
+              const hours = Math.hypot(t.x - town.x, t.z - town.z) / 200;
+              this.world.sky.time = (this.world.sky.time + hours / 24) % 1;
+              this.travel(this.world, stop, stop.facing + Math.PI, () => this.hud.toast(`The coach rattles into ${t.name}.`));
+            },
+          })),
+          { text: 'Never mind.', next: null },
+        ],
+      },
+    }, 'greet', () => {
+      if (this.mode === 'dialogue') this.setMode('play');
+    });
+  }
+
+  chapelHeal() {
+    const s = this.player.stats;
+    s.hp = s.maxHp;
+    s.mana = s.maxMana;
+    this.hud.toast('A blessing restores you.', 'quest');
   }
 
   // ---------------------------------------------------------------- the Man in Grey
@@ -660,9 +893,17 @@ export class Game {
         sky.time = (sky.time + 0.1) % 1;
       }
       this.flags.restPoint = place;
+      // Raw meat gets roasted over the fire while you rest.
+      const raw = this.inventory.count('raw_meat');
+      if ((place === 'camp' || place === 'tent') && raw > 0) {
+        this.inventory.remove('raw_meat', raw);
+        this.inventory.add('cooked_meat', raw);
+        this.hud.toast(`You roast your meat over the fire. 🍖 Roast Meat ×${raw}`, 'loot');
+      }
       this.setMode('play');
       this.save(false);
-      const where = { camp: 'by the fire', tent: 'in your tent', millbrook: 'at the Fallen Star', thornbury: 'at the Thorn & Thistle' }[place];
+      const inn = this.world.doors.find((d) => d.town === place && d.kind === 'inn');
+      const where = place === 'camp' ? 'by the fire' : place === 'tent' ? 'in your tent' : `at ${inn?.name ?? 'the inn'}`;
       this.hud.toast(`You rest ${where}. <i>(Game saved)</i>`);
     });
   }
@@ -696,8 +937,8 @@ export class Game {
   }
 
   quickHeal() {
-    if (this.inventory.has('potion')) this.useItem('potion');
-    else if (this.inventory.has('stew')) this.useItem('stew');
+    const food = ['greater_potion', 'potion', 'cooked_meat', 'stew', 'smoked_fish', 'cider'].find((id) => this.inventory.has(id));
+    if (food) this.useItem(food);
     else if (this.inventory.has('bread')) this.useItem('bread');
     else if (this.inventory.has('herb')) this.useItem('herb');
     else this.hud.toast('You have nothing to heal with.', 'warn');
@@ -815,7 +1056,7 @@ export class Game {
     const t = this.tent;
     if (!t) return;
     this.world.remove(t.prop);
-    this.world.colliders.splice(this.world.colliders.indexOf(t.collider), 1);
+    this.world.colliders.remove(t.collider);
     this.interactions.remove('tent');
     this.tent = null;
     if (relocating) return;
@@ -891,7 +1132,12 @@ export class Game {
       case 'pip': return !f.metPip;
       case 'marisol': return q.isActive('grey2');
       case 'hale': return !f.met_hale || q.isActive('grey3') || q.readyFor('hale').length > 0 || (f.chapter1 && !q.status('bones'));
-      default: return false;
+      default: {
+        // Frontier folk: something to offer or collect in their quest chain.
+        const chain = NPCS[id]?.questChain;
+        if (!chain) return false;
+        return chain.some(([qid, after]) => q.isReady(qid) || (!q.status(qid) && (!after || q.isDone(after))));
+      }
     }
   }
 
@@ -964,8 +1210,8 @@ export class Game {
     // Saving inside a cave puts you back at its mouth on load; interiors are remembered.
     let where = { space: 'world', x: p.position.x, z: p.position.z, facing: p.facing };
     if (this.space.dark) {
-      const mouth = this.world.caveMouths.find((m) => this.space.def.id === m.def.id);
-      where = { space: 'world', x: mouth.front.x, z: mouth.front.z, facing: mouth.front.facing + Math.PI };
+      const e = this.space.exitTo;
+      where = { space: 'world', x: e.x, z: e.z, facing: e.facing };
     } else if (this.space !== this.world) {
       where = { space: this.space.id, x: p.position.x, z: p.position.z, facing: p.facing };
     }
@@ -985,6 +1231,7 @@ export class Game {
       quests: this.quests.serialize(),
       collected: [...this.collected],
       memories: [...this.memories],
+      bounties: this.bounties.serialize(),
     });
     if (announce) this.hud.toast(ok ? `Game saved to slot ${this.slot}.` : 'Could not save. Browser storage is unavailable.', ok ? 'info' : 'warn');
   }
@@ -1007,6 +1254,7 @@ export class Game {
     // Saves from before the fireball existed: grant it if a shard was already found.
     if ((this.counters.shard ?? 0) > 0) this.flags.fireball = true;
     this.memories = [...d.memories];
+    this.bounties.load(d.bounties);
     this.quests.load(d.quests);
     // Older saves finished Chapter I before Chapter II existed.
     if (this.flags.chapter1 && !this.quests.status('grey1')) this.quests.start('grey1');
@@ -1027,15 +1275,19 @@ export class Game {
   update(dt, t) {
     const { input, player } = this;
     if (this.world.update(dt, t, player.position, this.camera)) this.day++;
-    if (this.space !== this.world) this.space.update(t, dt);
+    if (this.space !== this.world) this.space.update(t, dt, player.position);
 
     const frozen = this.mode === 'paused' || this.mode === 'menu';
     for (const [id, npc] of Object.entries(this.npcs)) {
       if (npc.space !== this.space) continue;
+      // People far away are hidden and still (skinned meshes are never culled on their own).
+      const near = Math.hypot(npc.position.x - player.position.x, npc.position.z - player.position.z) < 150;
+      npc.mesh.visible = near;
+      if (!near) continue;
       if (!frozen) npc.update(dt, t, player.position);
       npc.setMarker(this.mode !== 'title' && this.npcHasNews(id));
     }
-    if (this.space === this.world && !frozen) for (const a of this.animals) a.update(dt, player.position);
+    if (this.space === this.world && !frozen) this.updateAnimals(dt);
 
     switch (this.mode) {
       case 'title':
@@ -1090,8 +1342,25 @@ export class Game {
   }
 
   updateEnemies(dt) {
-    if (this.space === this.world) this.spawner.update(dt, this.player, this.camera, 1 - this.world.sky.daylight);
+    if (this.space === this.world) this.spawner.update(dt, this.player, this.camera, 1 - this.world.sky.daylight, this.spells);
     else if (this.space.dark) this.updateCaveEnemies(dt);
+    // Dungeon spike traps.
+    if (this.space.spikesAt?.(this.player.position.x, this.player.position.z, this.engine.elapsed)) this.player.takeDamage(12);
+  }
+
+  // Animals graze, flee, and (if you're that sort of person) can be butchered. They come back in time.
+  updateAnimals(dt) {
+    const p = this.player.position;
+    for (const a of this.animals) {
+      if (a.dead) {
+        if ((a.respawnT -= dt) <= 0 && Math.hypot(a.home.x - p.x, a.home.z - p.z) > 90) a.revive();
+        else if (!a.gone) a.update(dt, p);
+        continue;
+      }
+      const near = Math.hypot(a.position.x - p.x, a.position.z - p.z) < 150;
+      a.mesh.visible = near;
+      if (near) a.update(dt, p);
+    }
   }
 
   // The world keeps breathing while a dialogue or menu is open, but nothing can hurt you.
@@ -1216,12 +1485,30 @@ export class Game {
     }
     this.inTown = town;
 
-    for (const m of this.world.caveMouths) {
-      const key = `found_${m.def.id}`;
-      if (!this.flags[key] && Math.hypot(p.x - m.def.x, p.z - m.def.z) < 30) {
+    // Places: discovered when you come close; `visit:<id>` counts each arrival (for quests and bounties).
+    for (const place of [...CAVES, ...DUNGEONS, ...SITES]) {
+      const d = Math.hypot(p.x - place.x, p.z - place.z);
+      const key = `found_${place.id}`;
+      if (!this.flags[key] && d < 35) {
         this.flags[key] = true;
-        this.hud.toast(`Discovered: <b>${m.def.name}</b>`, 'quest');
+        this.hud.toast(`Discovered: <b>${place.name}</b>`, 'quest');
+        this.grantXp(25);
       }
+      const inside = d < 28;
+      if (inside && !this.insideSites.has(place.id)) {
+        this.insideSites.add(place.id);
+        this.bump(`visit:${place.id}`);
+      } else if (!inside) this.insideSites.delete(place.id);
+    }
+
+    // Crossing into a new region.
+    const region = this.world.regionAt(p.x, p.z);
+    if (region !== this.region && !town) {
+      this.region = region;
+      const r = REGIONS[region];
+      const first = !this.flags[`region_${region}`];
+      this.flags[`region_${region}`] = true;
+      this.hud.banner(r.name, first ? `Danger: ${'★'.repeat(r.level)}` : '');
     }
   }
 
@@ -1243,6 +1530,19 @@ export class Game {
       e.takeDamage(dmg, p.position);
       this.hud.floater(e.position, crit ? `${dmg}!` : `${dmg}`, crit ? 'crit' : 'dmg', e.barHeight);
       hit = true;
+    }
+    if (this.space === this.world) {
+      for (const a of this.animals) {
+        if (a.dead || !a.hp) continue;
+        const dx = a.position.x - p.position.x, dz = a.position.z - p.position.z, d = Math.hypot(dx, dz);
+        if (d > p.reach + a.collider.r || (d > 0.5 && (dx * fx + dz * fz) / d < 0.25)) continue;
+        const dmg = Math.round(p.attackPower * (0.85 + Math.random() * 0.3));
+        this.hud.floater(a.position, `${dmg}`, 'dmg', 1.6);
+        if (a.takeDamage(dmg, p.position)) {
+          for (const [item, n] of ANIMAL_LOOT[a.kind] ?? []) this.giveItem(item, n);
+        }
+        hit = true;
+      }
     }
     if (hit) this.cam.shake(0.12);
   }

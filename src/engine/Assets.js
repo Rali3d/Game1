@@ -16,6 +16,25 @@ let manifest = null;
 
 // The animation libraries: every Quaternius character shares their skeleton.
 const ANIMATION_FILES = ['anims/UAL1.glb', 'anims/UAL2.glb'];
+// Folders of FBX models. The older packs are in centimetres with plain coloured materials; the static ones
+// (no animations) are scaled to metres here so they can be used like the glTF kits.
+const FBX_FOLDERS = new Set(['animals', 'monsters', 'weapons', 'dungeon', 'ruins']);
+const STATIC_FBX = new Set(['weapons', 'dungeon', 'ruins']);
+let leafTexture = null;
+
+// FBX materials arrive as Phong with a transparency three.js reads as invisible. Swap in the same
+// Standard material the glTF kits use, so everything is lit alike.
+function fbxMaterial(m, folder) {
+  const out = new THREE.MeshStandardMaterial({ name: m.name, color: m.color.clone(), map: m.map ?? null, roughness: 0.85, metalness: 0 });
+  if (/Steel|Metal|Gold/i.test(m.name)) Object.assign(out, { roughness: 0.45, metalness: 0.6 });
+  if (/Fire/i.test(m.name)) Object.assign(out, { emissive: new THREE.Color(0xff6a1a), emissiveIntensity: 1.5 });
+  if (folder === 'ruins' && /Leaf|Green/i.test(m.name)) {
+    leafTexture ??= new THREE.TextureLoader().load('assets/textures/ruins/Leaf_Texture.png', (t) => { t.colorSpace = THREE.SRGBColorSpace; });
+    Object.assign(out, { map: leafTexture, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0x9fc46a) });
+  }
+  if (/Cobweb/i.test(m.name)) Object.assign(out, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+  return out;
+}
 
 export const Assets = {
   async load(onProgress = () => {}) {
@@ -27,14 +46,22 @@ export const Assets = {
     } catch { /* not built locally: those models are simply absent */ }
     const files = [...ANIMATION_FILES];
     for (const [folder, names] of Object.entries(manifest)) {
-      for (const n of names) files.push(`${folder}/${n}.${folder === 'animals' ? 'fbx' : 'gltf'}`);
+      for (const n of names) files.push(`${folder}/${n}.${FBX_FOLDERS.has(folder) ? 'fbx' : 'gltf'}`);
     }
     let done = 0;
     const loadOne = async (path) => {
       if (path.endsWith('.fbx')) {
         // FBX models load as a Group with their animations attached.
         const group = await fbxLoader.loadAsync(`assets/${path}`);
-        group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        const folder = path.split('/')[0];
+        group.traverse((o) => {
+          if (!o.isMesh) return;
+          o.castShadow = true;
+          o.receiveShadow = true;
+          o.material = Array.isArray(o.material) ? o.material.map((m) => fbxMaterial(m, folder)) : fbxMaterial(o.material, folder);
+          o.geometry = compactGroups(o.geometry);
+        });
+        if (STATIC_FBX.has(folder)) group.scale.multiplyScalar(0.01);
         models.set(path.replace(/\.fbx$/, ''), { scene: group, animations: group.animations });
         onProgress(++done / files.length, path);
         return;
@@ -44,7 +71,7 @@ export const Assets = {
         for (const clip of gltf.animations) clips.set(clip.name, clip);
       } else {
         // The nature kit stores wind weights in vertex colours; they aren't meant to tint the leaves.
-        const dataColours = path.startsWith('nature/');
+        const dataColours = path.startsWith('nature');
         gltf.scene.traverse((o) => {
           if (o.isMesh) {
             o.castShadow = true;
@@ -115,7 +142,7 @@ export const Assets = {
     const parts = [];
     scene.traverse((o) => {
       if (!o.isMesh) return;
-      const geometry = o.geometry.clone().applyMatrix4(o.matrixWorld);
+      const geometry = compactGroups(o.geometry.clone().applyMatrix4(o.matrixWorld));
       parts.push({ geometry, material: o.material });
     });
     partsCache.set(key, parts);
@@ -144,6 +171,27 @@ function shareTextures() {
       }
     });
   }
+}
+
+// FBX geometry can switch material hundreds of times (a draw call each). Reorder the triangles so each
+// material's are together: one group, and one draw call, per material.
+function compactGroups(geo) {
+  if (geo.groups.length <= 1) return geo;
+  if (!geo.index) geo.setIndex([...Array(geo.attributes.position.count).keys()]);
+  const src = geo.index.array, byMat = new Map();
+  for (const g of geo.groups) {
+    if (!byMat.has(g.materialIndex)) byMat.set(g.materialIndex, []);
+    byMat.get(g.materialIndex).push(src.subarray(g.start, g.start + g.count));
+  }
+  const out = [];
+  geo.clearGroups();
+  for (const [mat, runs] of [...byMat].sort((a, b) => a[0] - b[0])) {
+    const start = out.length;
+    for (const r of runs) for (const v of r) out.push(v);
+    geo.addGroup(start, out.length - start, mat);
+  }
+  geo.setIndex(out);
+  return geo;
 }
 
 // Size of a model's bounding box, handy for scaling props to fit.

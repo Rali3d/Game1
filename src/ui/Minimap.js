@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { heightAt, isWater, pathDistance, WORLD_SIZE } from '../world/Terrain.js';
+import { heightAt, isWater, pathDistance, regionWeights, WORLD_SIZE } from '../world/Terrain.js';
 import { smoothstep } from '../engine/math.js';
+import { REGIONS } from '../data/world.js';
 
 const VIEW = 70; // world units from centre to edge of the map
-const TEX = 220; // terrain image resolution (2 world units per pixel)
+const TEX = 560; // terrain image resolution (2.5 world units per pixel)
 
 // North-up circular minimap drawn with 2D canvas over a pre-rendered terrain image.
 export class Minimap {
@@ -14,23 +15,54 @@ export class Minimap {
     this.image = this.renderTerrain(game.world.vegetation.treePoints, game.world.towns.flatMap((t) => t.footprints));
   }
 
+  // The whole land as a picture, drawn once: the minimap shows a window of it and the world map all of it.
   renderTerrain(trees, buildings, size = TEX) {
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(size, size);
-    const low = new THREE.Color(0x4f7d35), high = new THREE.Color(0x8c8a6a), water = new THREE.Color(0x35688c);
+    const high = new THREE.Color(0x8c8a6a), water = new THREE.Color(0x35688c), snow = new THREE.Color(0xe8ecee);
     const path = new THREE.Color(0x9a7d55);
     const col = new THREE.Color();
     const scale = WORLD_SIZE / size;
+    // Region colours (and snow lines), blended, on a coarse 10 m grid and interpolated per pixel.
+    const RG = 10, RN = Math.ceil(WORLD_SIZE / RG) + 1;
+    const lows = Object.fromEntries(Object.entries(REGIONS).map(([k, r]) => [k, new THREE.Color(r.grass[0]).lerp(new THREE.Color(r.grass[1]), 0.4)]));
+    const grid = new Float32Array(RN * RN * 4);
+    for (let j = 0; j < RN; j++) {
+      for (let i = 0; i < RN; i++) {
+        const x = i * RG - WORLD_SIZE / 2, z = j * RG - WORLD_SIZE / 2;
+        const out = smoothstep(200, 280, Math.hypot(x, z));
+        const v = lows.vale;
+        let r = v.r * (1 - out), gg = v.g * (1 - out), b = v.b * (1 - out), sl = 38 * (1 - out);
+        for (const [key, w] of regionWeights(x, z)) {
+          const c = lows[key];
+          r += c.r * w * out; gg += c.g * w * out; b += c.b * w * out;
+          sl += (REGIONS[key].snowLine ?? 38) * w * out;
+        }
+        grid.set([r, gg, b, sl], (j * RN + i) * 4);
+      }
+    }
+    const sample = (x, z, k) => {
+      const fx = (x + WORLD_SIZE / 2) / RG, fz = (z + WORLD_SIZE / 2) / RG;
+      const i = Math.min(RN - 2, Math.floor(fx)), j = Math.min(RN - 2, Math.floor(fz)), u = fx - i, v = fz - j;
+      const at = (a, b) => grid[(b * RN + a) * 4 + k];
+      return (at(i, j) * (1 - u) + at(i + 1, j) * u) * (1 - v) + (at(i, j + 1) * (1 - u) + at(i + 1, j + 1) * u) * v;
+    };
     for (let py = 0; py < size; py++) {
       for (let px = 0; px < size; px++) {
         const x = -WORLD_SIZE / 2 + (px + 0.5) * scale;
         const z = -WORLD_SIZE / 2 + (py + 0.5) * scale;
         const h = heightAt(x, z);
         if (isWater(x, z)) col.copy(water);
-        else if (pathDistance(x, z) < 1.4) col.copy(path);
-        else col.copy(low).lerp(high, smoothstep(2, 30, h)).multiplyScalar(0.85 + (h % 3) / 20);
+        else if (pathDistance(x, z) < 1.6) col.copy(path);
+        else {
+          col.setRGB(sample(x, z, 0), sample(x, z, 1), sample(x, z, 2)).lerp(high, smoothstep(14, 55, h) * 0.6);
+          col.lerp(snow, smoothstep(sample(x, z, 3) + 2, sample(x, z, 3) + 8, h) * 0.85);
+          // Hill shading, lit from the north-west, so the relief reads at a glance.
+          const slope = (heightAt(x - scale, z - scale) - heightAt(x + scale, z + scale)) / (scale * 2);
+          col.multiplyScalar(Math.max(0.55, Math.min(1.35, 1 + slope * 0.9)));
+        }
         const i = (py * size + px) * 4;
         img.data[i] = col.r * 255;
         img.data[i + 1] = col.g * 255;

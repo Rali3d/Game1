@@ -1,9 +1,11 @@
 import { WORLD_SIZE, WORLD_RADIUS, LANDMARKS } from '../world/Terrain.js';
-import { TOWNS, CAVES } from '../data/towns.js';
+import { TOWNS, CAVES, DUNGEONS } from '../data/towns.js';
+import { REGIONS, SITES } from '../data/world.js';
 
 const $ = (s) => document.querySelector(s);
 
-// Full-screen map of the whole valley (M). Caves appear once you've found them.
+// Full-screen map of the whole land (M). Towns you haven't visited show as a question mark; caves, dungeons
+// and ruins appear once you've found them.
 export class WorldMap {
   constructor(game) {
     this.g = game;
@@ -14,8 +16,7 @@ export class WorldMap {
 
   show() {
     const g = this.g;
-    // Rendered once, on first open, at one world unit per pixel.
-    this.image ??= g.minimap.renderTerrain(g.world.vegetation.treePoints, g.world.towns.flatMap((t) => t.footprints), 440);
+    this.image = g.minimap.image;
     this.el.classList.remove('hidden');
     this.draw();
   }
@@ -67,9 +68,34 @@ export class WorldMap {
       ctx.stroke();
     };
 
+    // Region names, faint, across each region.
+    for (const [key, r] of Object.entries(REGIONS)) {
+      if (r.bearing === undefined) continue;
+      const a = r.bearing * Math.PI / 180, d = 420;
+      const [x, y] = at(Math.sin(a) * d, -Math.cos(a) * d);
+      ctx.globalAlpha = 0.55;
+      label(r.name.toUpperCase(), x, y, '#f4ead0', 13);
+      ctx.globalAlpha = 1;
+    }
     for (const t of TOWNS) {
       const [x, y] = at(t.x, t.z);
-      label(t.name, x, y - t.r * k - 6);
+      if (g.flags[`visited_${t.id}`]) label(t.name, x, y - t.r * k - 6);
+      else {
+        pin(x, y, 'rgba(232, 196, 106, 0.55)', 5);
+        label('?', x, y - 10, '#e8c46a', 13);
+      }
+    }
+    for (const d of DUNGEONS) {
+      if (!g.flags[`found_${d.id}`]) continue;
+      const [x, y] = at(d.x, d.z);
+      pin(x, y, '#8a6a9a', 7, 'triangle');
+      label(d.name, x, y - 12, '#e2d0ec', 12);
+    }
+    for (const s of SITES) {
+      if (!g.flags[`found_${s.id}`]) continue;
+      const [x, y] = at(s.x, s.z);
+      pin(x, y, s.kind === 'peak' ? '#d0502a' : '#a89a80', 6, 'diamond');
+      label(s.name, x, y - 12, '#efe4cc', 11);
     }
     const [cx, cy] = at(LANDMARKS.camp.x, LANDMARKS.camp.z);
     pin(cx, cy, '#ff9a3c', 5);

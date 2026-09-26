@@ -149,7 +149,7 @@ export class Sky {
     const fog = this.scene.fog;
     fog.color.copy(u.horizonColor.value);
     fog.near = 50 + 40 * day;
-    fog.far = 210 + 140 * day;
+    fog.far = 200 + 110 * day;
 
     this.dome.position.copy(camera.position);
     this.stars.position.copy(camera.position);

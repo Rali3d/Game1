@@ -3,6 +3,7 @@ import { heightAt } from './Terrain.js';
 import { glowSprite } from './Props.js';
 import { Assets } from '../engine/Assets.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeStatic } from './merge.js';
 
 // Builds a town from its data (see data/towns.js). Everything is laid out in town-local coordinates
 // (origin = the square, -z = north) and converted to world space for colliders, doors and NPC spots.
@@ -512,9 +513,6 @@ export function createTown(scene, colliders, sky, T) {
     place(lamp, at.x, at.z, at.ry + Math.PI / 2);
     addCircle(at.x, at.z, 0.2);
   }
-  const plazaLight = new THREE.PointLight(0xffb45a, 0, 34, 1.5);
-  plazaLight.position.set(0, 4.5, 0);
-  g.add(plazaLight);
 
   // ---- Town sign by the road in. One box collider covers posts and board. ----
   const ent = ring(T.entrance, T.r - 3);
@@ -526,6 +524,25 @@ export function createTown(scene, colliders, sky, T) {
   const side = rotatePoint(ent.x, ent.z, ent.ry, 3.4, 0);
   place(signPost, side.x, side.z, ent.ry + Math.PI);
   addBox(side.x, side.z, 1.5, 0.2, ent.ry + Math.PI, false);
+  // The coach stops by the sign.
+  const stop = rotatePoint(ent.x, ent.z, ent.ry, -2.4, -1.5);
+  spots.coach = { ...toWorld(stop.x, stop.z), facing: ent.ry };
+
+  // ---- Notice board on the square, by the road in ----
+  const nb = ring(T.entrance, 7.5);
+  const nbSide = rotatePoint(nb.x, nb.z, nb.ry, 3.2, 0);
+  const board = new THREE.Group();
+  for (const sx of [-0.9, 0.9]) mesh(box(0.12, 2.3, 0.12), M.darkWood, sx, 1.15, 0, board);
+  mesh(box(2.0, 1.2, 0.08), M.wood, 0, 1.55, 0, board);
+  mesh(roofGeometry(2.4, 0.5, 0.3), roofs[0], 0, 2.3, 0, board);
+  const paper = std(0xefe4c8);
+  [[-0.55, 1.75, 0.1], [0.1, 1.6, -0.08], [0.6, 1.8, 0.12], [-0.3, 1.3, -0.1], [0.45, 1.3, 0.06]].forEach(([x, y, r]) => {
+    mesh(new THREE.PlaneGeometry(0.42, 0.52), paper, x, y, 0.05, board).rotation.z = r;
+  });
+  place(board, nbSide.x, nbSide.z, nb.ry); // papers facing the square
+  addBox(nbSide.x, nbSide.z, 1.1, 0.2, nb.ry, false);
+  const front = rotatePoint(nbSide.x, nbSide.z, nb.ry, 0, 1.2);
+  spots.board = { ...toWorld(front.x, front.z) };
 
   // ---- Fences, hay, log piles, training dummies ----
   for (const [lx, lz, len, ry] of T.fences ?? []) {
@@ -608,19 +625,22 @@ export function createTown(scene, colliders, sky, T) {
     }
   }
 
+  // Everything that doesn't move becomes one mesh per material: a whole town in a few dozen draw calls.
+  mergeStatic(g, [...spinners, flag]);
+
   return {
     id: T.id,
     group: g,
     footprints,
     spots,
     doors,
+    plaza: { x: T.x, y: baseY + 4.5, z: T.z }, // lit by one of the world's shared plaza lights at night
     update(t) {
       const night = 1 - sky.daylight;
       M.window.emissiveIntensity = 0.15 + night * 1.8;
       if (kitGlass) kitGlass.emissiveIntensity = 0.1 + night * 1.6;
       M.stained.emissiveIntensity = 0.3 + night * 0.8;
       lampGlows.forEach((gl) => (gl.material.opacity = night * 0.9));
-      plazaLight.intensity = night * 35;
       for (const s of spinners) s.rotation.z = t * 0.6;
       if (spots.forgeGlow) spots.forgeGlow.material.opacity = 0.65 + Math.sin(t * 9) * 0.15;
       if (flag) flag.rotation.y = Math.sin(t * 2) * 0.25;

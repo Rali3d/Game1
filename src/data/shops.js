@@ -1,5 +1,7 @@
 // What each merchant sells (unlimited stock) and which item types they'll buy from you.
 // Tools and tomes are one-of-a-kind: they disappear from the list once you own or have read them.
+import { FRONTIER_SHOPS } from './frontier.js';
+
 export const SHOPS = {
   brenna: {
     name: "Brenna's Smithy",
@@ -31,4 +33,5 @@ export const SHOPS = {
     stock: ['bread', 'stew', 'potion', 'mana_potion', 'tent'],
     buys: ['consumable', 'material'],
   },
+  ...FRONTIER_SHOPS,
 };

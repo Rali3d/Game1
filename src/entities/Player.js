@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CharacterModel, normaliseAppearance, SKIN_TONES } from './CharacterModel.js';
-import { createWeapon, createCape, createHandLantern, GRIP_R, GRIP_POS, SHEATH_POS, SHEATH_ROT, SHEATH_POS_LONG, SHEATH_ROT_LONG, CAPE_OFFSET, LANTERN_OFFSET } from './Gear.js';
+import { createWeapon, createHandLantern, GRIP_R, GRIP_POS, SHEATH_POS, SHEATH_ROT, SHEATH_POS_LONG, SHEATH_ROT_LONG, LANTERN_OFFSET } from './Gear.js';
 import { clamp, damp, dampAngle } from '../engine/math.js';
 import { events } from '../engine/EventBus.js';
 import { ITEMS } from '../data/items.js';
@@ -55,9 +55,6 @@ export class Player {
     this.position = this.mesh.position;
     this.mesh.rotation.y = this.facing;
     this.mesh.add(this.light);
-    this.cape = createCape(0x6e3b2c);
-    this.cape.visible = false;
-    this.model.follow(this.cape, 'spine_03', CAPE_OFFSET);
     this.lanternMesh = createHandLantern();
     this.model.follow(this.lanternMesh, 'hand_l', LANTERN_OFFSET);
     const weapon = this.equipment.weapon;
@@ -124,11 +121,9 @@ export class Player {
     w.position.copy(GRIP_POS);
   }
 
-  // Capes show as a cape; body armour dyes the outfit.
+  // Body armour dyes the outfit. Cloaks don't show: the models have no cloth that fits the characters.
   applyArmorVisual() {
     const armor = ITEMS[this.equipment.armor];
-    this.cape.visible = armor?.visual === 'cape';
-    if (armor?.visual === 'cape') this.cape.material.color.setHex(armor.tint ?? 0x6e3b2c);
     const dye = new THREE.Color(armor?.visual === 'body' ? armor.tint : this.appearance.dye).lerp(new THREE.Color(0xffffff), 0.55);
     for (const m of this.model.materials) if (/Peasant|Ranger/.test(m.name)) m.color.copy(dye);
   }
@@ -329,7 +324,6 @@ export class Player {
       else this.model.locomote(clamp(hs, 0, RUN));
     }
     this.model.update(dt);
-    if (this.cape.visible) this.cape.rotation.x = 0.12 + 0.28 * Math.min(hs / WALK, 1.4);
 
     const t = performance.now() / 1000;
     if (this.lanternOn) this.light.intensity = 16 + Math.sin(t * 9) * 0.8;

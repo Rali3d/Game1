@@ -73,7 +73,8 @@ export class HUD {
     this.slotTent.classList.toggle('hidden', !g.inventory.has('tent'));
     setText(this.where, g.locationName());
 
-    const boss = g.boss?.alive && g.boss.state === 'chase' ? g.boss : null;
+    const b = g.boss ?? g.elite;
+    const boss = b?.alive && b.state === 'chase' ? b : null;
     this.bossBar.classList.toggle('hidden', !boss);
     if (boss) {
       setWidth(this.bossFill, boss.hp / boss.def.hp);
